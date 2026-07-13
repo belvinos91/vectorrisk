@@ -166,6 +166,7 @@ footer{border-top:1px solid var(--line);color:var(--faint);font-size:11.5px;text
     <button data-v="sim"><span class="idx">06</span>Multi-year simulation</button>
     <button data-v="model"><span class="idx">07</span>Model &amp; equations</button>
     <button data-v="validation"><span class="idx">08</span>Validation</button>
+    <button data-v="diseases"><span class="idx">09</span>Vectors &amp; disease</button>
   </nav>
 </header>
 
@@ -596,6 +597,38 @@ footer{border-top:1px solid var(--line);color:var(--faint);font-size:11.5px;text
         </div>
       </div>
     </div>
+  </div>
+</section>
+
+<!-- ================= 09 VECTORS & DISEASE ================= -->
+<section class="view" id="v-diseases">
+  <div class="section-head">
+    <div>
+      <div class="eyebrow">Vectors &amp; disease</div>
+      <h2>Vector-borne disease reference</h2>
+      <p>Vectors, dominant African species, symbionts, and pathogens for the main vector-borne diseases. Each entry states whether the current abundance model applies directly (it is calibrated for <em>Anopheles</em>) or is indicative only and needs re-parameterisation for that vector.</p>
+    </div>
+    <label style="display:flex;gap:8px;align-items:center;color:var(--muted);font-size:12px">
+      <input type="checkbox" id="disAfrican" checked> African diseases only
+    </label>
+  </div>
+
+  <div id="disNeedsApi" class="note">Connect to the backend on the <b>Overview</b> screen to load the disease reference.</div>
+
+  <div id="disPanel" style="display:none">
+    <div class="grid g-side">
+      <div class="card">
+        <div class="eyebrow">Select disease</div>
+        <label class="fld" style="margin-top:12px"><span class="lb">Disease</span>
+          <select id="disSelect"></select></label>
+        <div class="readouts" id="disHead" style="margin-top:12px"></div>
+      </div>
+      <div class="card">
+        <div class="eyebrow">Details</div>
+        <div id="disDetail" style="margin-top:10px"></div>
+      </div>
+    </div>
+    <div class="note" style="margin-top:16px" id="disModelNote"></div>
   </div>
 </section>
 
@@ -1359,7 +1392,56 @@ document.getElementById('dlVal').addEventListener('click',()=>{ if(!valLast||!va
   download('validation_correlations.csv',toCsv(valLast.results.map(r=>({feature:r.feature,
     pearson_r:r.pearson_r,pearson_p:r.pearson_p,spearman_r:r.spearman_r,spearman_p:r.spearman_p,n:r.n}))),'text/csv'); });
 
-function refreshAll(){ renderMonthly(); drawMap(); renderMcCentral(); if(document.getElementById('girDensity')) drawGirDensity(); updateValGate(); }
+/* ================= VECTORS & DISEASE ================= */
+let DIS_LOADED=false;
+function updateDisGate(){ const on=!!API;
+  document.getElementById('disNeedsApi').style.display=on?'none':'block';
+  document.getElementById('disPanel').style.display=on?'block':'none';
+  if(on&&!DIS_LOADED) loadDiseases(); }
+async function loadDiseases(){
+  if(!API) return;
+  try{
+    const af=document.getElementById('disAfrican').checked;
+    const d=await jget('/diseases?african_only='+af);
+    const names=Object.keys(d.diseases||{});
+    const sel=document.getElementById('disSelect');
+    sel.innerHTML=names.map(n=>`<option>${n}</option>`).join('');
+    DIS_LOADED=true;
+    if(names.length) renderDisease(names[0]);
+  }catch(e){ document.getElementById('disDetail').innerHTML='<span class="chip">could not load ('+e.message+')</span>'; }
+}
+async function renderDisease(name){
+  try{
+    const d=await jget('/diseases/'+encodeURIComponent(name));
+    const ready=/^direct/.test(d.model_applicability||'');
+    const ro=(k,v,col)=>`<div class="ro"><div class="k">${k}</div><div class="v" style="font-size:15px">${v}</div><div class="bar" style="background:${col||'var(--accent)'}"></div></div>`;
+    document.getElementById('disHead').innerHTML=
+      ro('Vector',d.vector||'—')+
+      ro('Group',d.thermal_group||'—')+
+      ro('African',d.african?'yes':'no',d.african?'var(--ok)':'var(--warn)')+
+      ro('Model',ready?'direct':'indicative',ready?'var(--ok)':'var(--warn)');
+    const list=a=>Array.isArray(a)?a.join(', '):(a||'—');
+    const row=(k,v)=>`<div class="kv" style="grid-template-columns:130px 1fr;margin-bottom:8px"><div class="k">${k}</div><div>${v}</div></div>`;
+    document.getElementById('disDetail').innerHTML=
+      row('Species',list(d.species))+
+      row('Pathogen',list(d.pathogen))+
+      row('Symbiont',d.symbiont||'—')+
+      row('Distribution',d.distribution||'—')+
+      row('Habitat',d.habitat||'—')+
+      row('Behavior',d.behavior||'—')+
+      row('Significance',d.significance||'—')+
+      row('Treatment',list(d.treatment));
+    document.getElementById('disModelNote').innerHTML= ready
+      ? `<b>Model applies directly.</b> ${d.thermal_note||''} Risk maps for ${name} use the calibrated Anopheles abundance model.`
+      : `<b>Indicative only.</b> ${d.thermal_note||''} The abundance maps are calibrated for <em>Anopheles</em>; treat ${name} (${d.thermal_group}) output as provisional until the model is re-parameterised for this vector.`;
+    document.getElementById('disModelNote').style.borderColor=ready?'rgba(91,214,160,.35)':'rgba(242,161,84,.3)';
+  }catch(e){ document.getElementById('disDetail').innerHTML='<span class="chip">error: '+e.message+'</span>'; }
+}
+document.getElementById('disSelect').addEventListener('change',e=>renderDisease(e.target.value));
+document.getElementById('disAfrican').addEventListener('change',()=>{DIS_LOADED=false;loadDiseases();});
+document.querySelector('#nav button[data-v="diseases"]').addEventListener('click',updateDisGate);
+
+function refreshAll(){ renderMonthly(); drawMap(); renderMcCentral(); if(document.getElementById('girDensity')) drawGirDensity(); updateValGate(); updateDisGate(); }
 function renderMath(){ if(window.renderMathInElement) renderMathInElement(document.getElementById('v-model'),
   {delimiters:[{left:'$$',right:'$$',display:true},{left:'\\(',right:'\\)',display:false}]}); }
 

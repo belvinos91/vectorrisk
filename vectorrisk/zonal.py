@@ -86,7 +86,8 @@ def country_monthly_climatology(country: str, resolution: str,
         tp = worldclim_month_path(temp_var, m, resolution, cache_dir)
         rp = worldclim_month_path("prec", m, resolution, cache_dir)
         t, r = zonal_mean_TR(tp, rp, geom)
-        T.append(round(t, 2)); R.append(round(r, 1))
+        T.append(round(t, 2) if np.isfinite(t) else None)
+        R.append(round(r, 1) if np.isfinite(r) else None)
     return {"country": country, "resolution": resolution, "temp_var": temp_var, "T": T, "R": R}
 
 
@@ -106,6 +107,13 @@ def admin_metric_featurecollection(country: str, month: int, xc: float,
     p = central_params() if params is None else params
     name_col = admin_name_col(gdf.columns, lvl)
 
+    def _safe(x):
+        try:
+            xf = float(x)
+            return xf if np.isfinite(xf) else None
+        except (TypeError, ValueError):
+            return None
+
     feats = []
     for _, row in gdf.iterrows():
         geom = row.geometry
@@ -117,9 +125,9 @@ def admin_metric_featurecollection(country: str, month: int, xc: float,
             T = R = float("nan")
         m = compute_metrics(T, R, p, xc) if np.isfinite(T) and np.isfinite(R) else None
         props = {"unit": str(row.get(name_col, "?")), "level": lvl,
-                 "month": MONTH_NAMES[month - 1], "T_C": T, "R_mm": R}
+                 "month": MONTH_NAMES[month - 1], "T_C": _safe(T), "R_mm": _safe(R)}
         if m:
-            props.update({k: float(m[k]) for k in
+            props.update({k: _safe(m[k]) for k in
                           ("Lambda", "exceed", "stationary_mean", "sigma", "persist")})
         feats.append({"type": "Feature",
                       "geometry": geom.__geo_interface__,

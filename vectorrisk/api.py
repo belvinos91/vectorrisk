@@ -516,3 +516,20 @@ def validate_subnational_panel(body: SubPanelBody):
     except Exception as e:
         raise HTTPException(503, f"Sub-national panel unavailable "
                                  f"(needs geo+ts stack + GADM + TerraClimate + MAP rasters): {e}")
+
+
+# ======================================================================
+# Vector-borne disease & species reference (Africa-focused, corrected)
+# ======================================================================
+@app.get("/diseases")
+def diseases(african_only: bool = Query(True)):
+    from .diseases import list_diseases, VECTOR_GROUPS
+    return {"vector_groups": VECTOR_GROUPS, "diseases": list_diseases(african_only)}
+
+
+@app.get("/diseases/{name}")
+def disease_detail(name: str):
+    from .diseases import DISEASES
+    if name not in DISEASES:
+        raise HTTPException(404, f"Unknown disease '{name}'")
+    return {"name": name, **DISEASES[name]}
