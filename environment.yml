@@ -1,0 +1,24 @@
+name: vectorrisk
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - numpy
+  - scipy
+  - rasterio
+  - geopandas
+  - shapely
+  - pyproj
+  - requests
+  - xarray
+  - rioxarray
+  - netCDF4
+  - fastapi
+  - uvicorn
+  - pydantic
+  - pandas
+  - matplotlib
+  - tqdm
+  - pip
+  - pip:
+      - -e .

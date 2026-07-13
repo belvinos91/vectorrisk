@@ -1,0 +1,1266 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>VectorRisk — Stochastic Abundance Risk Console</title>
+
+<!-- external libs (all from cdnjs) -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+
+<style>
+/* ============ design tokens: "field instrument" console ============ */
+:root{
+  --ink:#0c141c;          /* base panel */
+  --ink-2:#0f1a24;        /* app bg */
+  --panel:#132230;        /* raised panel */
+  --panel-2:#18293a;      /* nested */
+  --line:#213547;         /* hairline */
+  --line-2:#2c465e;
+  --txt:#e7eef4;          /* primary text */
+  --muted:#8fa6b6;        /* secondary */
+  --faint:#5f7688;
+  --accent:#35d0c0;       /* interactive teal */
+  --accent-dim:#1f7a72;
+  --warn:#f2a154;
+  --danger:#e5544b;
+  --ok:#5bd6a0;
+  --mono:ui-monospace,"SFMono-Regular","JetBrains Mono",Menlo,Consolas,monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,system-ui,sans-serif;
+  --r:10px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--ink-2);color:var(--txt);font-family:var(--sans);font-size:14px;line-height:1.5}
+h1,h2,h3,h4{margin:0;font-weight:650;letter-spacing:.2px}
+a{color:var(--accent)}
+button{font-family:var(--sans)}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.eyebrow{font:600 10.5px/1 var(--mono);letter-spacing:.22em;text-transform:uppercase;color:var(--faint)}
+
+/* ---- header ---- */
+header{position:sticky;top:0;z-index:600;background:linear-gradient(180deg,#0d1922,#0c141c);
+  border-bottom:1px solid var(--line);padding:14px 20px 0}
+.brandrow{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+.logo{display:flex;align-items:center;gap:10px}
+.logo .dot{width:11px;height:11px;border-radius:50%;background:var(--accent);
+  box-shadow:0 0 0 4px rgba(53,208,192,.15),0 0 14px rgba(53,208,192,.6)}
+.logo h1{font-size:16px}
+.logo .sub{color:var(--muted);font-size:12px}
+.pill{margin-left:auto;font:600 10.5px/1 var(--mono);letter-spacing:.12em;color:var(--warn);
+  border:1px solid var(--line-2);border-radius:999px;padding:6px 10px;text-transform:uppercase}
+nav{display:flex;gap:2px;margin-top:12px;overflow-x:auto}
+nav button{background:none;border:none;color:var(--muted);padding:11px 15px;cursor:pointer;
+  font-size:13px;font-weight:600;border-bottom:2px solid transparent;white-space:nowrap;letter-spacing:.2px}
+nav button:hover{color:var(--txt)}
+nav button.on{color:var(--txt);border-bottom-color:var(--accent)}
+nav button .idx{font:600 10px/1 var(--mono);color:var(--faint);margin-right:7px}
+
+/* ---- layout ---- */
+main{max-width:1240px;margin:0 auto;padding:24px 20px 90px}
+.view{display:none;animation:fade .25s ease}
+.view.on{display:block}
+@keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.grid{display:grid;gap:16px}
+.g2{grid-template-columns:1fr 1fr}
+.g3{grid-template-columns:repeat(3,1fr)}
+.g-side{grid-template-columns:320px 1fr}
+@media(max-width:900px){.g2,.g3,.g-side{grid-template-columns:1fr}}
+
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:18px}
+.card h3{font-size:14px;margin-bottom:3px}
+.card .cap{color:var(--muted);font-size:12.5px;margin-bottom:14px}
+.section-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin:2px 0 16px;flex-wrap:wrap}
+.section-head h2{font-size:22px}
+.section-head p{color:var(--muted);max-width:64ch;margin:6px 0 0}
+
+/* ---- readouts (signature) ---- */
+.readouts{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.ro{background:var(--panel-2);border:1px solid var(--line);border-radius:8px;padding:12px 13px;position:relative;overflow:hidden}
+.ro .k{font:600 9.5px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--faint)}
+.ro .v{font-family:var(--mono);font-size:23px;font-weight:600;margin-top:8px;letter-spacing:.5px}
+.ro .u{font-family:var(--mono);font-size:11px;color:var(--muted);margin-left:4px}
+.ro .bar{position:absolute;left:0;bottom:0;height:3px;width:100%;background:var(--accent);opacity:.85}
+
+/* ---- controls ---- */
+label.fld{display:block;margin-bottom:12px}
+label.fld .lb{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:5px}
+label.fld .lb b{color:var(--txt);font-family:var(--mono);font-weight:600}
+select,input[type=number],input[type=text]{width:100%;background:var(--ink);color:var(--txt);
+  border:1px solid var(--line-2);border-radius:7px;padding:8px 10px;font-family:var(--mono);font-size:13px}
+select:focus,input:focus{outline:2px solid var(--accent-dim);outline-offset:0;border-color:var(--accent)}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.seg{display:inline-flex;background:var(--ink);border:1px solid var(--line-2);border-radius:8px;padding:3px;gap:2px;flex-wrap:wrap}
+.seg button{background:none;border:none;color:var(--muted);padding:6px 11px;border-radius:6px;cursor:pointer;font-size:12.5px;font-weight:600}
+.seg button.on{background:var(--accent);color:#04231f}
+.btn{background:var(--accent);color:#04231f;border:none;border-radius:8px;padding:9px 15px;font-weight:700;cursor:pointer;font-size:13px}
+.btn:hover{filter:brightness(1.08)}
+.btn.ghost{background:none;color:var(--accent);border:1px solid var(--line-2)}
+.btn.ghost:hover{border-color:var(--accent)}
+.btn[disabled]{opacity:.5;cursor:not-allowed}
+.btnrow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+
+/* ---- table ---- */
+.tblwrap{overflow-x:auto;border:1px solid var(--line);border-radius:8px}
+table{border-collapse:collapse;width:100%;font-size:12.5px}
+th,td{padding:9px 12px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
+th{position:sticky;top:0;background:var(--panel-2);color:var(--faint);font:600 10px/1.2 var(--mono);
+  letter-spacing:.1em;text-transform:uppercase;z-index:1}
+td{font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--txt)}
+th:first-child,td:first-child{text-align:left}
+tbody tr:hover td{background:rgba(53,208,192,.06)}
+td.chip{color:var(--muted)}
+.swatch{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:7px;vertical-align:middle}
+
+/* ---- misc ---- */
+.note{background:rgba(242,161,84,.08);border:1px solid rgba(242,161,84,.3);border-radius:8px;
+  padding:12px 14px;color:#f6c48c;font-size:12.5px}
+.note b{color:#ffd9ab}
+.legend{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11px;color:var(--muted)}
+.ramp{height:10px;width:180px;border-radius:3px;border:1px solid var(--line-2)}
+#map{height:520px;border-radius:8px;border:1px solid var(--line);background:#0a1219}
+.leaflet-popup-content-wrapper{background:var(--panel);color:var(--txt);border-radius:8px}
+.leaflet-popup-tip{background:var(--panel)}
+.leaflet-popup-content{margin:12px 14px;font-family:var(--mono);font-size:12px}
+.leaflet-popup-content b{color:var(--accent)}
+.eq{background:var(--panel-2);border:1px solid var(--line);border-radius:8px;padding:14px 16px;margin:10px 0;overflow-x:auto}
+.eq .why{color:var(--muted);font-size:12.5px;margin-top:8px;font-family:var(--sans)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-size:12.5px}
+.kv .k{color:var(--muted)}
+.chartbox{position:relative;height:300px}
+.spin{display:inline-block;width:13px;height:13px;border:2px solid var(--line-2);border-top-color:var(--accent);
+  border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px;margin-right:7px}
+@keyframes sp{to{transform:rotate(360deg)}}
+.tag{display:inline-block;font:600 10px/1 var(--mono);padding:4px 7px;border-radius:5px;letter-spacing:.05em}
+.tag.ok{background:rgba(91,214,160,.14);color:var(--ok)}
+.tag.no{background:rgba(229,84,75,.14);color:var(--danger)}
+details{border:1px solid var(--line);border-radius:8px;padding:2px 14px;margin-top:12px;background:var(--panel-2)}
+summary{cursor:pointer;padding:11px 0;font-weight:600;font-size:13px}
+footer{border-top:1px solid var(--line);color:var(--faint);font-size:11.5px;text-align:center;padding:20px}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brandrow">
+    <div class="logo">
+      <span class="dot"></span>
+      <div>
+        <h1>VectorRisk <span style="color:var(--accent)">Console</span></h1>
+        <div class="sub">Stochastic mosquito-abundance risk · sub-Saharan Africa</div>
+      </div>
+    </div>
+    <span class="pill">Abundance risk · not incidence</span>
+  </div>
+  <nav id="nav">
+    <button data-v="overview" class="on"><span class="idx">01</span>Overview</button>
+    <button data-v="map"><span class="idx">02</span>Map &amp; countries</button>
+    <button data-v="monthly"><span class="idx">03</span>Monthly data</button>
+    <button data-v="mc"><span class="idx">04</span>Parameters &amp; Monte&nbsp;Carlo</button>
+    <button data-v="girsanov"><span class="idx">05</span>Girsanov &amp; policy</button>
+    <button data-v="sim"><span class="idx">06</span>Multi-year simulation</button>
+    <button data-v="model"><span class="idx">07</span>Model &amp; equations</button>
+    <button data-v="validation"><span class="idx">08</span>Validation</button>
+  </nav>
+</header>
+
+<main>
+
+<!-- ================= 01 OVERVIEW ================= -->
+<section class="view on" id="v-overview">
+  <div class="section-head">
+    <div>
+      <div class="eyebrow">Console overview</div>
+      <h2>A probabilistic layer for entomological surveillance</h2>
+      <p>This console runs the temperature–rainfall stochastic logistic model from your manuscript directly in the browser. For any climate state it evaluates the persistence condition, the stationary Gamma abundance law, threshold-exceedance risk, and finite-horizon intervention scenarios — then maps them across focus countries.</p>
+    </div>
+  </div>
+
+  <div class="grid g3" style="margin-bottom:16px">
+    <div class="card">
+      <div class="eyebrow">Focus countries</div>
+      <h3 style="margin-top:6px">Kenya · Cameroon · Mozambique</h3>
+      <p class="cap" style="margin-top:8px">Three malaria- and arbovirus-relevant settings spanning East, Central and Southern Africa. Additional countries and sub-national units plug into the same data structure.</p>
+    </div>
+    <div class="card">
+      <div class="eyebrow">Core index</div>
+      <h3 style="margin-top:6px" class="mono">Λ = r − δ − ½σ²</h3>
+      <p class="cap" style="margin-top:8px">The volatility-corrected growth rate. Λ&gt;0 is the stochastic persistence condition — a positive mean growth rate alone is not enough.</p>
+    </div>
+    <div class="card">
+      <div class="eyebrow">Primary output</div>
+      <h3 style="margin-top:6px" class="mono">P(X &gt; x_c)</h3>
+      <p class="cap" style="margin-top:8px">Probability that stationary abundance exceeds an operational index threshold, from the closed-form Gamma survival function.</p>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px">
+    <div class="eyebrow">What each screen does</div>
+    <div class="kv" style="margin-top:12px">
+      <div class="k mono">02 Map</div><div>Focus countries on an interactive map, coloured by any metric for a chosen month and threshold.</div>
+      <div class="k mono">03 Monthly</div><div>Full 12-month table per country with every metric; download as CSV or Excel.</div>
+      <div class="k mono">04 Monte&nbsp;Carlo</div><div>Edit central parameters and literature ranges; propagate uncertainty (mean ± 95% interval) and export draws.</div>
+      <div class="k mono">05 Girsanov</div><div>Baseline vs high-abundance vs intervention drift; finite-horizon path reweighting with ESS; policy notes.</div>
+      <div class="k mono">06 Simulation</div><div>Daily stochastic abundance path over 2–8 years of the seasonal cycle; download the time series.</div>
+      <div class="k mono">07 Model</div><div>Every governing equation, rendered and explained in plain language.</div>
+    </div>
+  </div>
+
+  <div class="note">
+    <b>Interpretation & scope.</b> Outputs are a <b>relative abundance-risk index</b>, not mosquito counts and not malaria/dengue incidence. Transmission additionally depends on vector competence, biting behaviour, human exposure, immunity and interventions. The in-browser build uses <b>editable representative monthly climate</b> per country (labelled illustrative). Live per-pixel WorldClim ingestion, full-raster Monte Carlo, and sub-national polygons run in the Python backend described on the Model screen.
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <div class="eyebrow">Live backend (optional)</div>
+    <h3 style="margin-top:6px">Connect to the VectorRisk API</h3>
+    <p class="cap" style="margin-top:8px">Run <span class="mono">vectorrisk serve</span> from the Python package, paste its URL below, and Connect. The console then pulls real WorldClim zonal-mean climate (down to 1&nbsp;km) per country and unlocks the live sub-national choropleth on the Map screen. Offline, everything keeps working on the built-in model.</p>
+    <div class="btnrow" style="margin-top:12px">
+      <input type="text" id="apiUrl" placeholder="http://127.0.0.1:8000" style="max-width:280px">
+      <select id="apiRes" style="width:auto"><option value="10m">10m (~18km)</option><option value="5m">5m (~9km)</option><option value="2.5m">2.5m</option><option value="30s" selected>30s (~1km)</option></select>
+      <button class="btn" id="apiConnect">Connect</button>
+      <button class="btn ghost" id="apiDisconnect" disabled>Use built-in</button>
+      <span id="apiStatus" class="mono" style="font-size:12px;color:var(--muted)">not connected · using built-in model</span>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 02 MAP ================= -->
+<section class="view" id="v-map">
+  <div class="section-head">
+    <div>
+      <div class="eyebrow">Geospatial view</div>
+      <h2>Country risk map</h2>
+      <p>Markers sit at representative malaria-relevant locations. Colour and size encode the selected metric using central parameters. Click a marker for the full readout.</p>
+    </div>
+    <div class="legend">
+      <span id="mapMetricLabel">Exceedance P(X&gt;x_c)</span>
+      <div class="ramp" id="mapRamp"></div>
+      <span id="mapLo">low</span>–<span id="mapHi">high</span>
+    </div>
+  </div>
+
+  <div class="grid g-side">
+    <div class="card">
+      <div class="eyebrow">Controls</div>
+      <label class="fld" style="margin-top:12px">
+        <span class="lb">Metric</span>
+        <select id="mapMetric">
+          <option value="exceed">Exceedance P(X &gt; x_c)</option>
+          <option value="Lambda">Suitability index Λ</option>
+          <option value="statMean">Stationary mean abundance</option>
+          <option value="persist">Persistence (Λ&gt;0)</option>
+          <option value="r">Recruitment r</option>
+          <option value="sigma">Volatility σ</option>
+        </select>
+      </label>
+      <label class="fld">
+        <span class="lb">Month</span>
+        <select id="mapMonth"></select>
+      </label>
+      <label class="fld">
+        <span class="lb">Threshold x_c</span>
+        <select id="mapXc" class="xcSel"></select>
+      </label>
+      <div class="btnrow" style="margin-top:4px">
+        <button class="btn ghost" id="loadChoro" disabled>Sub-national (live)</button>
+        <button class="btn ghost" id="clearChoro" disabled>Clear</button>
+      </div>
+      <div class="note" style="margin-top:10px;font-size:11.5px">
+        Basemap tiles need a network connection. The <b>Sub-national</b> button appears once a backend is connected on the Overview screen; it draws a per-admin-unit choropleth from real climate.
+      </div>
+    </div>
+    <div>
+      <div id="map"></div>
+      <div class="tblwrap" style="margin-top:14px">
+        <table id="mapTbl"></table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 03 MONTHLY ================= -->
+<section class="view" id="v-monthly">
+  <div class="section-head">
+    <div>
+      <div class="eyebrow">Seasonal profile</div>
+      <h2>12-month metric table</h2>
+      <p>All metrics for a single country across the year. Climate cells are editable — enter WorldClim-extracted values to override the defaults, then re-compute.</p>
+    </div>
+    <div class="btnrow">
+      <button class="btn ghost" id="dlMonthlyCsv">Download CSV</button>
+      <button class="btn" id="dlMonthlyXlsx">Download Excel</button>
+    </div>
+  </div>
+
+  <div class="btnrow" style="margin-bottom:14px">
+    <div class="seg" id="monthCountry"></div>
+    <label style="margin-left:auto;display:flex;gap:8px;align-items:center;color:var(--muted);font-size:12px">
+      Threshold x_c <select class="xcSel" id="monthXc" style="width:auto"></select>
+    </label>
+    <button class="btn ghost" id="editClimate">Edit climate</button>
+    <button class="btn ghost" id="resetClimate">Reset climate</button>
+  </div>
+
+  <div class="tblwrap"><table id="monthlyTbl"></table></div>
+  <div class="grid g2" style="margin-top:16px">
+    <div class="card"><div class="eyebrow">Seasonal Λ &amp; exceedance</div><div class="chartbox"><canvas id="seasonChart"></canvas></div></div>
+    <div class="card"><div class="eyebrow">Temperature &amp; rainfall</div><div class="chartbox"><canvas id="climateChart"></canvas></div></div>
+  </div>
+</section>
+
+<!-- ================= 04 MONTE CARLO ================= -->
+<section class="view" id="v-mc">
+  <div class="section-head">
+    <div>
+      <div class="eyebrow">Uncertainty propagation</div>
+      <h2>Parameters &amp; Monte Carlo</h2>
+      <p>Central values drive the deterministic maps and tables. Ranges define the uncertainty space sampled for the ensemble, exactly as in Table&nbsp;2 of the manuscript.</p>
+    </div>
+  </div>
+
+  <div class="grid g2">
+    <div class="card">
+      <div class="eyebrow">Run configuration</div>
+      <div class="grid g2" style="margin-top:12px">
+        <label class="fld"><span class="lb">Country</span><select id="mcCountry"></select></label>
+        <label class="fld"><span class="lb">Month</span><select id="mcMonth"></select></label>
+        <label class="fld"><span class="lb">Samples N</span>
+          <select id="mcN"><option>1000</option><option selected>5000</option><option>10000</option></select></label>
+        <label class="fld"><span class="lb">Threshold x_c</span><select id="mcXc" class="xcSel"></select></label>
+      </div>
+      <div class="btnrow" style="margin-top:6px">
+        <button class="btn" id="runMc">Run Monte Carlo</button>
+        <button class="btn ghost" id="dlMc" disabled>Download draws (CSV)</button>
+        <span id="mcStatus" class="mono" style="color:var(--muted);font-size:12px"></span>
+      </div>
+    </div>
+    <div class="card">
+      <div class="eyebrow">Deterministic readout · central parameters</div>
+      <div class="readouts" id="mcCentral" style="margin-top:12px"></div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <div class="eyebrow">Ensemble summary (mean ± 95% Monte Carlo interval)</div>
+    <div class="tblwrap" style="margin-top:12px"><table id="mcTbl"><tbody><tr><td class="chip" style="text-align:left">Run the ensemble to populate this table.</td></tr></tbody></table></div>
+    <div class="chartbox" style="margin-top:14px;height:260px"><canvas id="mcHist"></canvas></div>
+  </div>
+
+  <details>
+    <summary>Edit central parameters &amp; sampling ranges</summary>
+    <div class="note" style="margin:10px 0">Central value must lie inside [min, max]. The ensemble samples each parameter independently and uniformly across its range. "Reset" restores manuscript defaults.</div>
+    <div class="btnrow" style="margin-bottom:10px"><button class="btn ghost" id="resetParams">Reset to manuscript defaults</button></div>
+    <div class="tblwrap"><table id="paramTbl"></table></div>
+  </details>
+</section>
+
+<!-- ================= 05 GIRSANOV ================= -->
+<section class="view" id="v-girsanov">
+  <div class="section-head">
+    <div>
+      <div class="eyebrow">Change of measure</div>
+      <h2>Girsanov scenarios &amp; policy</h2>
+      <p>Reweight one set of baseline ecological paths toward a high-abundance drift (λσ) or an intervention drift (−u) over a finite horizon, without changing the diffusion coefficient. The stationary curves are long-run references for each drift.</p>
+    </div>
+  </div>
+
+  <div class="grid g-side">
+    <div class="card">
+      <div class="eyebrow">Representative environment</div>
+      <div class="grid g2" style="margin-top:12px">
+        <label class="fld"><span class="lb"><span>T*</span><b id="gT">26 °C</b></span><input type="range" id="girT" min="18" max="34" step="0.5" value="26"></label>
+        <label class="fld"><span class="lb"><span>R*</span><b id="gR">50 mm</b></span><input type="range" id="girR" min="10" max="260" step="5" value="50"></label>
+        <label class="fld"><span class="lb"><span>λ (high)</span><b id="gLam">0.15</b></span><input type="range" id="girLam" min="0" max="0.5" step="0.01" value="0.15"></label>
+        <label class="fld"><span class="lb"><span>u (control)</span><b id="gU">0.04</b></span><input type="range" id="girU" min="0" max="0.2" step="0.005" value="0.04"></label>
+      </div>
+      <label class="fld"><span class="lb"><span>Horizon τ (days)</span><b id="gTau">20</b></span><input type="range" id="girTau" min="10" max="60" step="5" value="20"></label>
+      <label class="fld"><span class="lb">Baseline paths N</span>
+        <select id="girN"><option>3000</option><option selected>6000</option><option>12000</option></select></label>
+      <div class="btnrow"><button class="btn" id="runGir">Run reweighting</button></div>
+      <div class="readouts" id="girReadout" style="margin-top:14px"></div>
+    </div>
+    <div>
+      <div class="card"><div class="eyebrow">Stationary densities by drift</div><div class="chartbox"><canvas id="girDensity"></canvas></div></div>
+      <div class="card" style="margin-top:16px"><div class="eyebrow">Finite-horizon validation · weighted P vs direct Q</div><div class="chartbox"><canvas id="girHist"></canvas></div></div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <div class="eyebrow">Reading these scenarios for policy</div>
+    <div class="grid g3" style="margin-top:12px">
+      <div><h4 class="mono" style="color:var(--danger)">High-abundance (λ)</h4><p class="cap" style="margin-top:6px">A stress/outbreak-favouring drift. Use it to bound how bad abundance could get if conditions shift beyond the baseline — a worst-case surveillance trigger.</p></div>
+      <div><h4 class="mono" style="color:var(--ok)">Intervention (u)</h4><p class="cap" style="margin-top:6px">Control that reduces net growth. The effect scales with u/σ: the same effort achieves less in noisier (higher-σ) environments.</p></div>
+      <div><h4 class="mono">ESS</h4><p class="cap" style="margin-top:6px">Effective sample size of the weights. High ESS means the reweighting is trustworthy; very low ESS signals the scenario is too far from baseline to estimate reliably.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 06 SIMULATION ================= -->
+<section class="view" id="v-sim">
+  <div class="section-head">
+    <div>
+      <div class="eyebrow">Time series</div>
+      <h2>Multi-year daily simulation</h2>
+      <p>Positivity-preserving log-Euler integration of the SDE over the repeating seasonal cycle, at daily resolution for 2–8 years. Export the full daily series for downstream analysis.</p>
+    </div>
+    <div class="btnrow">
+      <button class="btn ghost" id="dlSimCsv" disabled>Download CSV</button>
+      <button class="btn" id="dlSimXlsx" disabled>Download Excel</button>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px">
+    <div class="grid g3">
+      <label class="fld"><span class="lb">Country</span><select id="simCountry"></select></label>
+      <label class="fld"><span class="lb">Horizon</span>
+        <select id="simYears"><option value="2">2 years</option><option value="4" selected>4 years</option><option value="6">6 years</option><option value="8">8 years</option></select></label>
+      <label class="fld"><span class="lb">Climate interpolation</span>
+        <select id="simInterp"><option value="linear" selected>Linear (smooth)</option><option value="step">Step (per month)</option></select></label>
+    </div>
+    <div class="btnrow"><button class="btn" id="runSim">Run simulation</button>
+      <span id="simStatus" class="mono" style="color:var(--muted);font-size:12px"></span></div>
+  </div>
+
+  <div class="card"><div class="eyebrow">Daily abundance index Xₜ</div><div class="chartbox" style="height:340px"><canvas id="simChart"></canvas></div></div>
+  <div class="grid g3" style="margin-top:16px"><div class="readouts" id="simStats" style="grid-column:1/-1"></div></div>
+</section>
+
+<!-- ================= 07 MODEL ================= -->
+<section class="view" id="v-model">
+  <div class="section-head">
+    <div>
+      <div class="eyebrow">Governing equations</div>
+      <h2>The model, written out</h2>
+      <p>Every quantity the console computes, in the same form as the manuscript. This screen is a self-contained explanation of what the dashboard is doing and why.</p>
+    </div>
+  </div>
+
+  <div class="grid g2">
+    <div class="card">
+      <div class="eyebrow">1 · Stochastic abundance</div>
+      <div class="eq">$$dX_t = X_t\big[a(T_t,R_t) - b(T_t,R_t)X_t\big]\,dt + \sigma(T_t,R_t)\,X_t\,dW_t$$
+        <div class="why">Adult abundance follows a logistic diffusion with multiplicative environmental noise. Everything downstream is built from the drift coefficients \(a,b\) and the volatility \(\sigma\).</div></div>
+
+      <div class="eyebrow" style="margin-top:16px">2 · Recruitment</div>
+      <div class="eq">$$r(T,R)=\rho\,\beta_E\,p_E(T)p_L(T)p_P(T)\,S_R(R)\,D_T(T)$$
+        <div class="why">Effective per-capita recruitment combines egg output, thermal survival of each immature stage, rainfall habitat suitability, and thermal development.</div></div>
+
+      <div class="eq">$$p_j(T)=p_{j,\max}\exp\!\Big[-\tfrac{(T-T_{j,\mathrm{opt}})^2}{2w_j^2}\Big]$$
+        <div class="why">Gaussian thermal response for stage \(j\in\{E,L,P\}\) — intermediate optima, not monotone.</div></div>
+
+      <div class="eq">$$S_R(R)=\Big[\max\!\big\{0,\tfrac{4R(R_L-R)}{R_L^2}\big\}\Big]^3$$
+        <div class="why">Rainfall suitability: zero at drought and at flushing rainfall \(R_L\), peaking at \(R_L/2\). The cube sharpens the optimum.</div></div>
+
+      <div class="eq">$$D_T(T)=\frac{z\,e^{-z}}{2z+1},\quad z=\max\{\varepsilon,\,c_1T+c_2\}$$
+        <div class="why">Temperature-development response entering recruitment.</div></div>
+    </div>
+
+    <div class="card">
+      <div class="eyebrow">3 · Mortality &amp; capacity</div>
+      <div class="eq">$$L_A(T)=\max\{L_{\min},\,L_{\max}-q_\delta(T-T_{\delta,\mathrm{opt}})^2\},\quad \delta(T)=\tfrac{1}{L_A(T)}$$
+        <div class="why">Adult lifespan is unimodal in temperature; daily mortality is its reciprocal.</div></div>
+
+      <div class="eq">$$K(T,R)=K_{\min}+K_{\mathrm{amp}}\,S_R(R)\,S_K(T)$$
+        <div class="why">Environmental carrying capacity. In code, <span class="mono">K_max</span> is the increment \(K_{\mathrm{amp}}\); peak capacity is \(K_{\min}+K_{\mathrm{amp}}\).</div></div>
+
+      <div class="eq">$$a=r-\delta,\qquad b=\frac{r}{K}$$</div>
+
+      <div class="eyebrow" style="margin-top:16px">4 · Volatility &amp; persistence</div>
+      <div class="eq">$$\sigma(T,R)=\min\!\Big\{\sigma_{\max},\,\sigma_0+\sigma_T\big(\tfrac{T-T_{K,\mathrm{opt}}}{\omega_T}\big)^2+\sigma_R\big(\tfrac{R-R_{\mathrm{opt}}}{R_L}\big)^2\Big\}$$</div>
+      <div class="eq">$$\Lambda=a-\tfrac12\sigma^2>0\quad\text{(stochastic persistence)}$$
+        <div class="why">The volatility correction \(\sigma^2/2\) can push a nominally suitable environment below the persistence threshold.</div></div>
+    </div>
+  </div>
+
+  <div class="grid g2" style="margin-top:16px">
+    <div class="card">
+      <div class="eyebrow">5 · Stationary Gamma law</div>
+      <div class="eq">$$p_\infty(x)=\frac{\beta^{\alpha}}{\Gamma(\alpha)}x^{\alpha-1}e^{-\beta x},\quad \alpha=\frac{2a}{\sigma^2}-1,\ \beta=\frac{2b}{\sigma^2}$$</div>
+      <div class="eq">$$\mathbb E[X_\infty]=\frac{\Lambda}{b},\qquad \mathrm{Var}(X_\infty)=\frac{\sigma^2\Lambda}{2b^2}$$</div>
+      <div class="eq">$$\mathbb P(X_\infty>x_c)=\frac{\Gamma(\alpha,\beta x_c)}{\Gamma(\alpha)}$$
+        <div class="why">Closed-form survival function — the exceedance risk mapped in screen 02, computed here with a regularized upper incomplete Gamma function.</div></div>
+    </div>
+    <div class="card">
+      <div class="eyebrow">6 · Finite-horizon change of measure</div>
+      <div class="eq">$$Z_\tau=\frac{dQ}{dP}=\exp\!\Big[-\!\int_0^\tau\theta_t\,dW_t^P-\tfrac12\!\int_0^\tau\theta_t^2\,dt\Big]$$</div>
+      <div class="eq">$$a_{Q,\text{high}}=a_P+\lambda\sigma\ (\theta=-\lambda),\qquad a_{Q,\text{int}}=a_P-u\ (\theta=\tfrac{u}{\sigma})$$
+        <div class="why">Reweights baseline paths toward a high-abundance or intervention scenario. Screen 05 checks \(\mathbb E_Q[\Phi]=\mathbb E_P[Z_\tau\Phi]\) numerically.</div></div>
+      <div class="eyebrow" style="margin-top:14px">Backend for the live/full system</div>
+      <div class="why" style="font-family:var(--sans);color:var(--muted)">
+        The manuscript pipeline (WorldClim v2.1 ingestion, Natural Earth masking, full-raster \(N{=}10{,}000\) Monte Carlo, GeoTIFF export) is Python. To make the console "live" — real-time climate and sub-national polygons — wrap that script in a small API (e.g. FastAPI) exposing <span class="mono">/metrics</span>, <span class="mono">/montecarlo</span>, <span class="mono">/simulate</span>, and a GeoJSON tile endpoint, and point these screens at it. The math on this page already matches that pipeline cell-for-cell, so it doubles as the reference implementation.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 08 VALIDATION ================= -->
+<section class="view" id="v-validation">
+  <div class="section-head">
+    <div>
+      <div class="eyebrow">Model validation</div>
+      <h2>Correlate metrics with disease incidence</h2>
+      <p>Which model output — and which exceedance threshold — best tracks observed incidence? The ranked table answers that; the best-correlating threshold is an empirical recalibration of the operational cutoff for the disease. Needs a connected backend.</p>
+    </div>
+  </div>
+
+  <div id="valNeedsApi" class="note">Connect to the VectorRisk backend on the <b>Overview</b> screen to run validation.</div>
+
+  <div id="valPanel" style="display:none">
+    <div class="grid g-side">
+      <div class="card">
+        <div class="eyebrow">Run configuration</div>
+        <label class="fld" style="margin-top:12px">
+          <span class="lb">Data source</span>
+          <select id="valMode">
+            <option value="builtin">WHO national (demo · 3 countries)</option>
+            <option value="panel">Country-year panel (live · TerraClimate)</option>
+            <option value="subpanel">Sub-national × year panel (live · MAP)</option>
+            <option value="upload">Upload incidence CSV (national)</option>
+            <option value="subnational">Sub-national (live · MAP raster)</option>
+          </select>
+        </label>
+
+        <div id="valYears" style="display:none">
+          <div class="grid g2">
+            <label class="fld"><span class="lb">From year</span><input type="number" id="valYrFrom" value="2001" min="1981" max="2024"></label>
+            <label class="fld"><span class="lb">To year</span><input type="number" id="valYrTo" value="2020" min="1981" max="2024"></label>
+          </div>
+          <div class="note" style="font-size:11.5px">Builds a (country × year) panel from TerraClimate and joins WHO incidence by ISO3+year — the properly powered validation. First run downloads climate subsets, so allow time.</div>
+        </div>
+
+        <div id="valSubPanel" style="display:none">
+          <label class="fld"><span class="lb">Country</span><select id="spCountry"></select></label>
+          <div class="grid g2">
+            <label class="fld"><span class="lb">From year</span><input type="number" id="spFrom" value="2015" min="1981" max="2024"></label>
+            <label class="fld"><span class="lb">To year</span><input type="number" id="spTo" value="2020" min="1981" max="2024"></label>
+          </div>
+          <label class="fld"><span class="lb">MAP raster path template (on server)</span>
+            <input type="text" id="spTemplate" placeholder="/data/map/pf_incidence_{year}.tif"></label>
+          <div class="note" style="font-size:11.5px">Per-admin-unit model metrics vs per-unit MAP incidence, across every admin unit and year — thousands of points. The heaviest run: one climate download per year and one MAP raster per year, each clipped to every unit. Use <b>{year}</b> in the template.</div>
+        </div>
+
+        <div id="valUpload" style="display:none">
+          <label class="fld"><span class="lb">Incidence CSV (columns: iso3,value)</span>
+            <input type="file" id="valFile" accept=".csv"></label>
+          <div class="note" style="font-size:11.5px">Joined by ISO3 to the loaded countries' climate. Header row required.</div>
+        </div>
+
+        <div id="valSub" style="display:none">
+          <label class="fld"><span class="lb">Country</span><select id="valCountry"></select></label>
+          <label class="fld"><span class="lb">Month</span><select id="valMonth"></select></label>
+          <label class="fld"><span class="lb">MAP incidence GeoTIFF (path on server)</span>
+            <input type="text" id="valRaster" placeholder="/data/map_pf_incidence_2021.tif"></label>
+          <div class="note" style="font-size:11.5px">Download a Pf incidence-rate raster from the Malaria Atlas Project portal onto the server, then give its path. Zonal means per admin unit are joined with per-unit model metrics.</div>
+        </div>
+
+        <div class="btnrow" style="margin-top:6px">
+          <button class="btn" id="runVal">Run validation</button>
+          <button class="btn ghost" id="dlVal" disabled>Download table (CSV)</button>
+        </div>
+        <div id="valStatus" class="mono" style="font-size:12px;color:var(--muted);margin-top:10px"></div>
+        <div class="readouts" id="valHeadline" style="margin-top:12px"></div>
+      </div>
+
+      <div>
+        <div class="card"><div class="eyebrow">Best metric vs incidence</div>
+          <div class="chartbox"><canvas id="valScatter"></canvas></div></div>
+        <div class="card" style="margin-top:16px">
+          <div class="eyebrow">Ranked correlations</div>
+          <div class="tblwrap" style="margin-top:10px"><table id="valTbl"><tbody><tr><td class="chip" style="text-align:left">Run validation to populate.</td></tr></tbody></table></div>
+          <div id="valNote" class="cap" style="margin-top:10px"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  VectorRisk Console · in-browser reference implementation of the temperature–rainfall stochastic abundance model ·
+  outputs are relative abundance-risk indices, not disease incidence.
+</footer>
+
+<script>
+/* =====================================================================
+   VectorRisk Console — model + UI  (vanilla JS, libs loaded from cdnjs)
+   ===================================================================== */
+window.addEventListener('load', () => {
+"use strict";
+
+/* ---------- special functions ---------- */
+function logGamma(x){
+  const c=[0.99999999999980993,676.5203681218851,-1259.1392167224028,
+    771.32342877765313,-176.61502916214059,12.507343278686905,
+    -0.13857109526572012,9.9843695780195716e-6,1.5056327351493116e-7];
+  if(x<0.5) return Math.log(Math.PI/Math.sin(Math.PI*x))-logGamma(1-x);
+  x-=1; let a=c[0]; const g=7, t=x+g+0.5;
+  for(let i=1;i<9;i++) a+=c[i]/(x+i);
+  return 0.5*Math.log(2*Math.PI)+(x+0.5)*Math.log(t)-t+Math.log(a);
+}
+function gammaP(a,x){                 // regularized lower P(a,x)
+  if(!(a>0)) return NaN;
+  if(x<=0) return 0;
+  if(x<a+1){                          // series
+    let ap=a, sum=1/a, del=sum;
+    for(let n=0;n<600;n++){ ap++; del*=x/ap; sum+=del;
+      if(Math.abs(del)<Math.abs(sum)*1e-13) break; }
+    return sum*Math.exp(-x+a*Math.log(x)-logGamma(a));
+  } else {                            // continued fraction -> Q
+    const F=1e-300; let b=x+1-a, c=1/F, d=1/b, h=d;
+    for(let i=1;i<600;i++){ const an=-i*(i-a); b+=2;
+      d=an*d+b; if(Math.abs(d)<F)d=F; c=b+an/c; if(Math.abs(c)<F)c=F;
+      d=1/d; const del=d*c; h*=del; if(Math.abs(del-1)<1e-13) break; }
+    return 1-Math.exp(-x+a*Math.log(x)-logGamma(a))*h;
+  }
+}
+const gammaQ=(a,x)=>1-gammaP(a,x);    // upper survival
+function gaussianN(){ let u=0,v=0; while(u===0)u=Math.random(); while(v===0)v=Math.random();
+  return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
+
+/* ---------- parameter defaults (manuscript) ---------- */
+const RANGES0={
+  beta_E:[60,160], rho:[0.035,0.090],
+  pE_max:[0.65,0.95], pL_max:[0.55,0.90], pP_max:[0.70,0.98],
+  T_E_opt:[24,29], T_L_opt:[24,30], T_P_opt:[24,30],
+  w_E:[5,8], w_L:[5,8], w_P:[5,8],
+  R_L:[180,320], c1:[0.035,0.070], c2:[0.00,0.25],
+  Lmax:[14,28], q_delta:[0.035,0.090], T_delta_opt:[24,28], L_min:[1.5,3.0],
+  K_min:[20,100], K_max:[1200,6000], T_K_opt:[24,29], omega_T:[5,8],
+  sigma0:[0.08,0.22], sigma_T:[0.005,0.050], sigma_R:[0.005,0.060], sigma_max:[0.45,0.75]
+};
+const PARAM_LABELS={
+  beta_E:"Eggs/female βE", rho:"Recruit scale ρ",
+  pE_max:"Egg survival max", pL_max:"Larva survival max", pP_max:"Pupa survival max",
+  T_E_opt:"Egg T-opt", T_L_opt:"Larva T-opt", T_P_opt:"Pupa T-opt",
+  w_E:"Egg width", w_L:"Larva width", w_P:"Pupa width",
+  R_L:"Rainfall limit R_L", c1:"Dev c1", c2:"Dev c2",
+  Lmax:"Max lifespan", q_delta:"Mortality curv.", T_delta_opt:"Lifespan T-opt", L_min:"Min lifespan",
+  K_min:"Capacity floor", K_max:"Capacity amp.", T_K_opt:"Capacity T-opt", omega_T:"Capacity width",
+  sigma0:"σ₀ base vol.", sigma_T:"σ_T temp stress", sigma_R:"σ_R rain stress", sigma_max:"σ cap"
+};
+const clone=o=>JSON.parse(JSON.stringify(o));
+let RANGES=clone(RANGES0);
+const midpoints=r=>{const p={};for(const k in r)p[k]=(r[k][0]+r[k][1])/2;return p;};
+let PARAMS=midpoints(RANGES);
+
+/* ---------- countries + representative climate (illustrative) ---------- */
+const MONTHS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const DAYS=[31,28,31,30,31,30,31,31,30,31,30,31];
+const CLIM0={
+  Kenya:{     lat:-0.10, lng:34.75, place:"Lake Victoria basin (west)",
+    T:[23,23.5,23.5,23,22.5,22,21.5,22,23,23.5,23,22.5],
+    R:[60,80,150,200,160,90,70,80,90,110,150,100] },
+  Cameroon:{  lat:3.87,  lng:11.52, place:"Central plateau (Yaoundé)",
+    T:[24,25,25,25,24.5,24,23.5,23.5,24,24,24,24],
+    R:[20,50,140,170,200,160,80,100,250,290,120,30] },
+  Mozambique:{lat:-19.84,lng:34.84, place:"Central coast (Beira)",
+    T:[27,27,26.5,25,23,21,21,22,24,25.5,26.5,27],
+    R:[220,200,150,60,35,30,25,25,30,60,120,180] }
+};
+let CLIM=clone(CLIM0);
+const COUNTRIES=Object.keys(CLIM0);
+const XC_SET=[250,500,700,1000,1250,1500];
+let XC=500;
+let API=null, API_RES="30s", choroLayer=null;   // live backend state
+
+/* ---------- the model ---------- */
+function metrics(T,R,p,xc){
+  const S_R=Math.pow(Math.max(0,4*R*(p.R_L-R)/(p.R_L*p.R_L)),3);
+  const pE=p.pE_max*Math.exp(-0.5*((T-p.T_E_opt)/p.w_E)**2);
+  const pL=p.pL_max*Math.exp(-0.5*((T-p.T_L_opt)/p.w_L)**2);
+  const pP=p.pP_max*Math.exp(-0.5*((T-p.T_P_opt)/p.w_P)**2);
+  const z=Math.max(1e-6,p.c1*T+p.c2), D_T=(z*Math.exp(-z))/(2*z+1);
+  const r=p.rho*p.beta_E*pE*pL*pP*S_R*D_T;
+  const L_A=Math.max(p.L_min,p.Lmax-p.q_delta*(T-p.T_delta_opt)**2);
+  const delta=1/L_A;
+  const S_K=Math.exp(-0.5*((T-p.T_K_opt)/p.omega_T)**2);
+  const K=p.K_min+p.K_max*S_R*S_K;
+  const Ropt=p.R_L/2;
+  const sigma=Math.min(p.sigma_max,p.sigma0+p.sigma_T*((T-p.T_K_opt)/p.omega_T)**2+p.sigma_R*((R-Ropt)/p.R_L)**2);
+  const a=r-delta, b=r/Math.max(K,1e-9), s2=Math.max(sigma*sigma,1e-12);
+  const Lambda=a-0.5*s2;
+  const alpha=2*a/s2-1, beta=2*b/s2;
+  const persist=(Lambda>0)&&(alpha>0)&&(beta>0);
+  let statMean=0,statVar=0,exceed=0;
+  if(persist){ statMean=alpha/beta; statVar=alpha/(beta*beta); exceed=gammaQ(alpha,beta*xc); }
+  return {r,delta,K,sigma,a,b,Lambda,alpha,beta,statMean,statVar,exceed,persist:persist?1:0};
+}
+const central=(T,R,xc)=>metrics(T,R,PARAMS,xc);
+
+function sampleParams(){ const p={}; for(const k in RANGES){const[a,b]=RANGES[k];p[k]=a+Math.random()*(b-a);} return p; }
+function monteCarlo(T,R,xc,N){
+  const keys=['r','delta','K','sigma','Lambda','statMean','statVar','exceed','persist'];
+  const acc={}; keys.forEach(k=>acc[k]={s:0,ss:0,n:0}); const draws=[];
+  for(let i=0;i<N;i++){ const p=sampleParams(); const m=metrics(T,R,p,xc);
+    keys.forEach(k=>{const v=m[k]; if(isFinite(v)){acc[k].s+=v;acc[k].ss+=v*v;acc[k].n++;}});
+    if(i<2000) draws.push({Lambda:m.Lambda,exceed:m.exceed,statMean:m.statMean,persist:m.persist});
+  }
+  const out={}; keys.forEach(k=>{const{s,ss,n}=acc[k]; const mean=n?s/n:NaN;
+    const varr=n>1?(ss-s*s/n)/(n-1):0, sd=Math.sqrt(Math.max(0,varr)), mcse=n?sd/Math.sqrt(n):NaN;
+    out[k]={mean,sd,lo:mean-1.96*mcse,hi:mean+1.96*mcse};});
+  return {out,draws,N};
+}
+
+/* ---------- colour ramp (teal -> yellow -> red) ---------- */
+const STOPS=[[13,59,102],[27,122,110],[42,157,143],[138,177,125],[233,196,106],[244,162,97],[231,111,81],[193,18,31]];
+function ramp(t){ t=Math.max(0,Math.min(1,t)); const x=t*(STOPS.length-1); const i=Math.floor(x), f=x-i;
+  const a=STOPS[i], b=STOPS[Math.min(i+1,STOPS.length-1)];
+  return `rgb(${Math.round(a[0]+(b[0]-a[0])*f)},${Math.round(a[1]+(b[1]-a[1])*f)},${Math.round(a[2]+(b[2]-a[2])*f)})`; }
+function rampCss(){ return `linear-gradient(90deg,${STOPS.map((s,i)=>`rgb(${s[0]},${s[1]},${s[2]}) ${i/(STOPS.length-1)*100}%`).join(',')})`; }
+
+/* ---------- number fmt ---------- */
+const fmt=(x,d=3)=>{ if(x==null||!isFinite(x))return "—";
+  if(Math.abs(x)>=1000) return x.toLocaleString(undefined,{maximumFractionDigits:0});
+  if(Math.abs(x)>=1) return x.toFixed(Math.min(d,2));
+  return x.toFixed(d); };
+const pct=x=>isFinite(x)?(x*100).toFixed(1)+"%":"—";
+
+/* ---------- metric registry ---------- */
+const METRICS={
+  exceed:{label:"Exceedance P(X>x_c)",fmt:pct,prob:true},
+  Lambda:{label:"Suitability index Λ",fmt:x=>fmt(x,4)},
+  statMean:{label:"Stationary mean abundance",fmt:x=>fmt(x,0)},
+  persist:{label:"Persistence (Λ>0)",fmt:pct,prob:true},
+  r:{label:"Recruitment r (day⁻¹)",fmt:x=>fmt(x,4)},
+  sigma:{label:"Volatility σ",fmt:x=>fmt(x,3)}
+};
+
+/* ===================== TAB NAV ===================== */
+document.querySelectorAll('#nav button').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('#nav button').forEach(x=>x.classList.remove('on'));
+  document.querySelectorAll('.view').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on'); document.getElementById('v-'+b.dataset.v).classList.add('on');
+  if(b.dataset.v==='map') setTimeout(()=>{ if(mapObj) mapObj.invalidateSize(); drawMap(); },60);
+}));
+
+/* ---------- populate month + xc selects ---------- */
+function fillMonths(sel){ sel.innerHTML=MONTHS.map((m,i)=>`<option value="${i}">${m}</option>`).join(''); }
+function fillXc(sel){ sel.innerHTML=XC_SET.map(v=>`<option ${v===XC?'selected':''}>${v}</option>`).join(''); }
+['mapMonth','mcMonth'].forEach(id=>fillMonths(document.getElementById(id)));
+document.querySelectorAll('.xcSel').forEach(fillXc);
+document.querySelectorAll('.xcSel').forEach(s=>s.addEventListener('change',e=>{
+  XC=+e.target.value; document.querySelectorAll('.xcSel').forEach(x=>x.value=XC);
+  drawMap(); renderMonthly(); renderMcCentral();
+}));
+
+/* ================= 02 MAP ================= */
+let mapObj=null, markerLayer=null;
+document.getElementById('mapRamp').style.background=rampCss();
+function metricRange(key,monthIdx){
+  const vals=COUNTRIES.map(c=>central(CLIM[c].T[monthIdx],CLIM[c].R[monthIdx],XC)[key]);
+  let lo=Math.min(...vals), hi=Math.max(...vals);
+  if(METRICS[key].prob){lo=0;hi=1;}
+  if(lo===hi){hi=lo+1e-6;}
+  return {lo,hi,vals};
+}
+function initMap(){
+  mapObj=L.map('map',{zoomControl:true,attributionControl:false}).setView([ -2,25 ],3.2);
+  try{ L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:10,subdomains:'abcd'}).addTo(mapObj); }catch(e){}
+  markerLayer=L.layerGroup().addTo(mapObj);
+  drawMap();
+}
+function drawMap(){
+  if(!mapObj) return;
+  const key=document.getElementById('mapMetric').value;
+  const mi=+document.getElementById('mapMonth').value;
+  document.getElementById('mapMetricLabel').textContent=METRICS[key].label;
+  const {lo,hi}=metricRange(key,mi);
+  document.getElementById('mapLo').textContent=METRICS[key].fmt(lo);
+  document.getElementById('mapHi').textContent=METRICS[key].fmt(hi);
+  markerLayer.clearLayers();
+  const rows=[];
+  COUNTRIES.forEach(c=>{
+    const T=CLIM[c].T[mi], R=CLIM[c].R[mi], m=central(T,R,XC);
+    const v=m[key], t=(v-lo)/(hi-lo);
+    L.circleMarker([CLIM[c].lat,CLIM[c].lng],{
+      radius:11+16*Math.max(0,Math.min(1,t)), color:'#0a1219', weight:1.5,
+      fillColor:ramp(t), fillOpacity:.9
+    }).bindPopup(
+      `<b>${c}</b> · ${MONTHS[mi]}<br>${CLIM[c].place}<br>`+
+      `T ${T}°C · R ${R} mm<br>`+
+      `Λ ${fmt(m.Lambda,4)}<br>P(X>${XC}) ${pct(m.exceed)}<br>`+
+      `mean ${fmt(m.statMean,0)}<br>persist ${m.persist?'yes':'no'}`
+    ).addTo(markerLayer);
+    rows.push({c,T,R,m});
+  });
+  // table under map
+  const t=document.getElementById('mapTbl');
+  t.innerHTML=`<thead><tr><th>Country</th><th>T °C</th><th>R mm</th><th>Λ</th><th>σ</th>
+    <th>Mean X</th><th>P(X>${XC})</th><th>Persist</th></tr></thead><tbody>`+
+    rows.map(({c,T,R,m})=>`<tr><td><span class="swatch" style="background:${ramp((m[key]-lo)/(hi-lo))}"></span>${c}</td>
+      <td>${T}</td><td>${R}</td><td>${fmt(m.Lambda,4)}</td><td>${fmt(m.sigma,3)}</td>
+      <td>${fmt(m.statMean,0)}</td><td>${pct(m.exceed)}</td>
+      <td>${m.persist?'<span class="tag ok">yes</span>':'<span class="tag no">no</span>'}</td></tr>`).join('')+
+    `</tbody>`;
+}
+document.getElementById('mapMetric').addEventListener('change',drawMap);
+document.getElementById('mapMonth').addEventListener('change',drawMap);
+
+/* ================= 03 MONTHLY ================= */
+let monthCountry="Kenya", climateEditable=false;
+let seasonChart=null, climateChart=null;
+function buildCountrySeg(id,onPick){
+  const el=document.getElementById(id);
+  el.innerHTML=COUNTRIES.map(c=>`<button data-c="${c}" class="${c===monthCountry?'on':''}">${c}</button>`).join('');
+  el.querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>{
+    el.querySelectorAll('button').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on'); onPick(b.dataset.c);
+  }));
+}
+buildCountrySeg('monthCountry',c=>{monthCountry=c;renderMonthly();});
+
+function monthlyRows(country){
+  return MONTHS.map((mn,i)=>{ const T=CLIM[country].T[i], R=CLIM[country].R[i];
+    const m=central(T,R,XC); return {Month:mn,T,R,...m}; });
+}
+function renderMonthly(){
+  const rows=monthlyRows(monthCountry);
+  const t=document.getElementById('monthlyTbl');
+  const climCell=(v,type,i)=>climateEditable
+    ? `<td><input data-i="${i}" data-t="${type}" value="${v}" style="width:64px;padding:4px 6px" class="climIn"></td>`
+    : `<td>${v}</td>`;
+  t.innerHTML=`<thead><tr><th>Month</th><th>T °C</th><th>R mm</th><th>r</th><th>δ</th><th>K</th>
+    <th>σ</th><th>Λ</th><th>Mean X</th><th>Var X</th><th>P(X>${XC})</th><th>Persist</th></tr></thead><tbody>`+
+    rows.map((r,i)=>`<tr><td>${r.Month}</td>${climCell(r.T,'T',i)}${climCell(r.R,'R',i)}
+      <td>${fmt(r.r,4)}</td><td>${fmt(r.delta,4)}</td><td>${fmt(r.K,0)}</td><td>${fmt(r.sigma,3)}</td>
+      <td>${fmt(r.Lambda,4)}</td><td>${fmt(r.statMean,0)}</td><td>${fmt(r.statVar,0)}</td>
+      <td>${pct(r.exceed)}</td><td>${r.persist?'<span class="tag ok">yes</span>':'<span class="tag no">no</span>'}</td></tr>`).join('')+
+    `</tbody>`;
+  if(climateEditable){
+    t.querySelectorAll('.climIn').forEach(inp=>inp.addEventListener('change',e=>{
+      const i=+e.target.dataset.i, type=e.target.dataset.t, val=parseFloat(e.target.value);
+      if(isFinite(val)){ CLIM[monthCountry][type][i]=val; renderMonthly(); }
+    }));
+  }
+  drawSeasonCharts(rows);
+}
+function drawSeasonCharts(rows){
+  const labels=rows.map(r=>r.Month);
+  if(seasonChart) seasonChart.destroy();
+  seasonChart=new Chart(document.getElementById('seasonChart'),{
+    type:'bar',
+    data:{labels,datasets:[
+      {type:'line',label:'Λ',data:rows.map(r=>r.Lambda),yAxisID:'y',borderColor:'#35d0c0',backgroundColor:'#35d0c0',tension:.3,pointRadius:2},
+      {type:'bar',label:'P(X>x_c)',data:rows.map(r=>r.exceed),yAxisID:'y1',backgroundColor:rows.map(r=>ramp(r.exceed))}
+    ]},
+    options:chartOpts({y:{title:{display:true,text:'Λ'}},y1:{position:'right',min:0,max:1,grid:{drawOnChartArea:false},title:{display:true,text:'P(X>x_c)'}}})
+  });
+  if(climateChart) climateChart.destroy();
+  climateChart=new Chart(document.getElementById('climateChart'),{
+    type:'line',
+    data:{labels,datasets:[
+      {label:'T (°C)',data:rows.map(r=>r.T),borderColor:'#f2a154',backgroundColor:'#f2a154',yAxisID:'y',tension:.3,pointRadius:2},
+      {label:'R (mm)',data:rows.map(r=>r.R),borderColor:'#4aa3ff',backgroundColor:'rgba(74,163,255,.15)',yAxisID:'y1',fill:true,tension:.3,pointRadius:2}
+    ]},
+    options:chartOpts({y:{title:{display:true,text:'°C'}},y1:{position:'right',grid:{drawOnChartArea:false},title:{display:true,text:'mm'}}})
+  });
+}
+document.getElementById('editClimate').addEventListener('click',e=>{
+  climateEditable=!climateEditable; e.target.textContent=climateEditable?'Done editing':'Edit climate'; renderMonthly();
+});
+document.getElementById('resetClimate').addEventListener('click',()=>{ CLIM=clone(CLIM0); renderMonthly(); drawMap(); });
+
+/* export helpers */
+function download(name,text,type){ const b=new Blob([text],{type}); const u=URL.createObjectURL(b);
+  const a=document.createElement('a'); a.href=u; a.download=name; a.click(); URL.revokeObjectURL(u); }
+function toCsv(rows){ if(!rows.length)return ""; const keys=Object.keys(rows[0]);
+  return keys.join(',')+'\n'+rows.map(r=>keys.map(k=>r[k]).join(',')).join('\n'); }
+function toXlsx(rows,name,sheet){ const ws=XLSX.utils.json_to_sheet(rows);
+  const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,sheet||'Sheet1'); XLSX.writeFile(wb,name); }
+function monthlyExport(){ return monthlyRows(monthCountry).map(r=>({
+  country:monthCountry,month:r.Month,threshold_xc:XC,T_C:r.T,R_mm:r.R,
+  r:+r.r.toFixed(6),delta:+r.delta.toFixed(6),K:+r.K.toFixed(2),sigma:+r.sigma.toFixed(5),
+  Lambda:+r.Lambda.toFixed(6),stationary_mean:+r.statMean.toFixed(3),stationary_var:+r.statVar.toFixed(3),
+  exceed_prob:+r.exceed.toFixed(5),persist:r.persist })); }
+document.getElementById('dlMonthlyCsv').addEventListener('click',()=>download(`monthly_${monthCountry}_xc${XC}.csv`,toCsv(monthlyExport()),'text/csv'));
+document.getElementById('dlMonthlyXlsx').addEventListener('click',()=>toXlsx(monthlyExport(),`monthly_${monthCountry}_xc${XC}.xlsx`,monthCountry));
+
+/* ================= 04 PARAMETERS & MONTE CARLO ================= */
+document.getElementById('mcCountry').innerHTML=COUNTRIES.map(c=>`<option>${c}</option>`).join('');
+document.getElementById('simCountry').innerHTML=COUNTRIES.map(c=>`<option>${c}</option>`).join('');
+let mcHist=null, lastDraws=null;
+function renderMcCentral(){
+  const c=document.getElementById('mcCountry').value, mi=+document.getElementById('mcMonth').value;
+  const T=CLIM[c].T[mi], R=CLIM[c].R[mi], m=central(T,R,XC);
+  const items=[['Λ',fmt(m.Lambda,4),''],['P(X>x_c)',pct(m.exceed),''],['Mean X',fmt(m.statMean,0),'idx'],
+    ['r',fmt(m.r,4),'d⁻¹'],['δ',fmt(m.delta,4),'d⁻¹'],['σ',fmt(m.sigma,3),''],['K',fmt(m.K,0),'idx'],
+    ['Persist',m.persist?'yes':'no','']];
+  document.getElementById('mcCentral').innerHTML=items.map(([k,v,u],i)=>`
+    <div class="ro"><div class="k">${k}</div><div class="v">${v}<span class="u">${u}</span></div>
+    <div class="bar" style="background:${i===0?(m.Lambda>0?'var(--ok)':'var(--danger)'):'var(--accent)'}"></div></div>`).join('');
+}
+function renderParamTable(){
+  const t=document.getElementById('paramTbl');
+  t.innerHTML=`<thead><tr><th>Parameter</th><th>Central</th><th>Min</th><th>Max</th></tr></thead><tbody>`+
+    Object.keys(RANGES).map(k=>`<tr><td style="text-align:left">${PARAM_LABELS[k]} <span class="chip mono">${k}</span></td>
+      <td><input class="pc" data-k="${k}" value="${PARAMS[k]}" style="width:88px;padding:4px 6px"></td>
+      <td><input class="pmin" data-k="${k}" value="${RANGES[k][0]}" style="width:78px;padding:4px 6px"></td>
+      <td><input class="pmax" data-k="${k}" value="${RANGES[k][1]}" style="width:78px;padding:4px 6px"></td></tr>`).join('')+
+    `</tbody>`;
+  t.querySelectorAll('.pc').forEach(i=>i.addEventListener('change',e=>{const v=parseFloat(e.target.value);
+    if(isFinite(v)){PARAMS[e.target.dataset.k]=v; refreshAll();}}));
+  t.querySelectorAll('.pmin').forEach(i=>i.addEventListener('change',e=>{const v=parseFloat(e.target.value);
+    if(isFinite(v))RANGES[e.target.dataset.k][0]=v;}));
+  t.querySelectorAll('.pmax').forEach(i=>i.addEventListener('change',e=>{const v=parseFloat(e.target.value);
+    if(isFinite(v))RANGES[e.target.dataset.k][1]=v;}));
+}
+document.getElementById('resetParams').addEventListener('click',()=>{
+  RANGES=clone(RANGES0); PARAMS=midpoints(RANGES); renderParamTable(); refreshAll();
+});
+['mcCountry','mcMonth'].forEach(id=>document.getElementById(id).addEventListener('change',renderMcCentral));
+
+document.getElementById('runMc').addEventListener('click',()=>{
+  const c=document.getElementById('mcCountry').value, mi=+document.getElementById('mcMonth').value;
+  const N=+document.getElementById('mcN').value, T=CLIM[c].T[mi], R=CLIM[c].R[mi];
+  const st=document.getElementById('mcStatus'); st.innerHTML=`<span class="spin"></span>sampling ${N.toLocaleString()} draws…`;
+  setTimeout(()=>{
+    const res=monteCarlo(T,R,XC,N); lastDraws={res,c,mi,T,R,N};
+    const o=res.out;
+    const rowsDef=[['Persistence P(Λ>0)','persist',pct],['Suitability Λ','Lambda',x=>fmt(x,4)],
+      ['Recruitment r','r',x=>fmt(x,4)],['Mortality δ','delta',x=>fmt(x,4)],['Volatility σ','sigma',x=>fmt(x,3)],
+      ['Carrying capacity K','K',x=>fmt(x,0)],['Stationary mean','statMean',x=>fmt(x,0)],
+      ['Stationary var','statVar',x=>fmt(x,0)],['Exceedance P(X>x_c)','exceed',pct]];
+    document.getElementById('mcTbl').innerHTML=
+      `<thead><tr><th>Quantity</th><th>Mean</th><th>95% CI low</th><th>95% CI high</th><th>Ensemble SD</th></tr></thead><tbody>`+
+      rowsDef.map(([lb,k,f])=>`<tr><td style="text-align:left">${lb}</td><td>${f(o[k].mean)}</td>
+        <td>${f(o[k].lo)}</td><td>${f(o[k].hi)}</td><td>${f(o[k].sd)}</td></tr>`).join('')+`</tbody>`;
+    // histogram of Λ across draws
+    const xs=res.draws.map(d=>d.Lambda).filter(isFinite);
+    const nb=30, lo=Math.min(...xs), hi=Math.max(...xs), w=(hi-lo)/nb||1;
+    const bins=new Array(nb).fill(0); xs.forEach(x=>{let b=Math.floor((x-lo)/w);b=Math.max(0,Math.min(nb-1,b));bins[b]++;});
+    if(mcHist)mcHist.destroy();
+    mcHist=new Chart(document.getElementById('mcHist'),{type:'bar',
+      data:{labels:bins.map((_,i)=>(lo+w*(i+.5)).toFixed(3)),
+        datasets:[{label:'Λ distribution across parameter draws',data:bins,
+          backgroundColor:bins.map((_,i)=>ramp((lo+w*(i+.5))>0?0.75:0.2))}]},
+      options:chartOpts({y:{title:{display:true,text:'count'}}},'Λ (dashed line = persistence boundary 0)')});
+    st.textContent=`done · ${N.toLocaleString()} draws · ${(res.draws.filter(d=>d.persist).length/Math.min(2000,N)*100).toFixed(0)}% of preview draws persist`;
+    document.getElementById('dlMc').disabled=false;
+  },30);
+});
+document.getElementById('dlMc').addEventListener('click',()=>{
+  if(!lastDraws)return; const {res,c,mi,N}=lastDraws;
+  const rows=res.draws.map((d,i)=>({country:c,month:MONTHS[mi],threshold_xc:XC,draw:i+1,
+    Lambda:+d.Lambda.toFixed(6),exceed_prob:+d.exceed.toFixed(5),stationary_mean:+d.statMean.toFixed(2),persist:d.persist}));
+  download(`montecarlo_${c}_${MONTHS[mi]}_xc${XC}.csv`,toCsv(rows),'text/csv');
+});
+
+/* ================= 05 GIRSANOV ================= */
+let girDensity=null, girHistChart=null;
+const gLink=(id,lab,unit)=>{const el=document.getElementById(id),out=document.getElementById(lab);
+  const upd=()=>{out.textContent=id==='girT'?el.value+' °C':id==='girR'?el.value+' mm':el.value+(unit||'');};
+  el.addEventListener('input',()=>{upd();drawGirDensity();}); upd();};
+gLink('girT','gT'); gLink('girR','gR'); gLink('girLam','gLam'); gLink('girU','gU');
+gLink('girTau','gTau');
+function girEnv(){ const T=+document.getElementById('girT').value, R=+document.getElementById('girR').value;
+  const m=central(T,R,XC); return {T,R,m}; }
+function gammaPdf(x,alpha,beta){ if(x<=0||alpha<=0)return 0;
+  return Math.exp(alpha*Math.log(beta)+(alpha-1)*Math.log(x)-beta*x-logGamma(alpha)); }
+function drawGirDensity(){
+  const {m}=girEnv(); const lam=+document.getElementById('girLam').value, u=+document.getElementById('girU').value;
+  const s2=m.sigma*m.sigma;
+  const scen=[['Baseline',m.a,'#8fa6b6'],['High-abundance a+λσ',m.a+lam*m.sigma,'#e5544b'],['Intervention a−u',m.a-u,'#5bd6a0']];
+  const curves=scen.map(([lb,a,col])=>{ const alpha=2*a/s2-1, beta=2*m.b/s2; return {lb,a,col,alpha,beta,ok:alpha>0}; });
+  const xmax=Math.max(...curves.filter(c=>c.ok).map(c=>c.alpha/c.beta*3),1000);
+  const N=120, xs=Array.from({length:N},(_,i)=>xmax*i/(N-1));
+  if(girDensity)girDensity.destroy();
+  girDensity=new Chart(document.getElementById('girDensity'),{type:'line',
+    data:{labels:xs.map(x=>x.toFixed(0)),datasets:curves.map(c=>({label:c.lb+(c.ok?'':' (no persist)'),
+      data:c.ok?xs.map(x=>gammaPdf(x,c.alpha,c.beta)):xs.map(()=>0),borderColor:c.col,backgroundColor:c.col,
+      pointRadius:0,tension:.3,borderWidth:2}))},
+    options:chartOpts({y:{title:{display:true,text:'density'}},x:{title:{display:true,text:'abundance index x'}}})});
+}
+document.getElementById('runGir').addEventListener('click',()=>{
+  const {m}=girEnv(); const lam=+document.getElementById('girLam').value, u=+document.getElementById('girU').value;
+  const tau=+document.getElementById('girTau').value, N=+document.getElementById('girN').value;
+  const steps=800, dt=tau/steps, sdt=Math.sqrt(dt), a=m.a, b=m.b, sig=m.sigma, X0=Math.max(1,0.25*m.K);
+  // baseline paths: record terminal X and terminal W
+  const termX=new Float64Array(N), termW=new Float64Array(N);
+  for(let i=0;i<N;i++){ let X=X0,W=0;
+    for(let s=0;s<steps;s++){ const xi=gaussianN(); W+=sdt*xi;
+      X=X*Math.exp((a-b*X-0.5*sig*sig)*dt+sig*sdt*xi); }
+    termX[i]=X; termW[i]=W; }
+  // weights for HIGH scenario: theta=-lam -> Z=exp(lam*W - .5 lam^2 tau)
+  const wH=new Float64Array(N); let sH=0,ssH=0,wsumH=0;
+  for(let i=0;i<N;i++){ const z=Math.exp(lam*termW[i]-0.5*lam*lam*tau); wH[i]=z; wsumH+=z; sH+=z*termX[i]; }
+  const meanH_weighted=sH/wsumH;
+  for(let i=0;i<N;i++){ const wn=wH[i]/wsumH; ssH+=wn*wn; }
+  const essH=1/ssH;
+  // weights for INTERVENTION: theta=u/sig -> Z=exp(-(u/sig)W - .5(u/sig)^2 tau)
+  const k=u/sig; let sI=0,ssI=0,wsumI=0; const wI=new Float64Array(N);
+  for(let i=0;i<N;i++){ const z=Math.exp(-k*termW[i]-0.5*k*k*tau); wI[i]=z; wsumI+=z; sI+=z*termX[i]; }
+  const meanI_weighted=sI/wsumI;
+  for(let i=0;i<N;i++){const wn=wI[i]/wsumI; ssI+=wn*wn;} const essI=1/ssI;
+  // direct Q simulations
+  function directMean(aQ){ let sum=0; const arr=new Float64Array(N);
+    for(let i=0;i<N;i++){ let X=X0; for(let s=0;s<steps;s++){ const xi=gaussianN();
+      X=X*Math.exp((aQ-b*X-0.5*sig*sig)*dt+sig*sdt*xi);} arr[i]=X; sum+=X;} return {mean:sum/N,arr}; }
+  const dH=directMean(a+lam*sig), dI=directMean(a-u);
+  // readout
+  const ro=(k2,v,u2,col)=>`<div class="ro"><div class="k">${k2}</div><div class="v">${v}<span class="u">${u2||''}</span></div><div class="bar" style="background:${col||'var(--accent)'}"></div></div>`;
+  document.getElementById('girReadout').innerHTML=
+    ro('High · weighted P',fmt(meanH_weighted,1),'','#e5544b')+
+    ro('High · direct Q',fmt(dH.mean,1),'','#e5544b')+
+    ro('High · ESS',(essH/N*100).toFixed(1),'%','#e5544b')+
+    ro('Interv · weighted P',fmt(meanI_weighted,1),'','#5bd6a0')+
+    ro('Interv · direct Q',fmt(dI.mean,1),'','#5bd6a0')+
+    ro('Interv · ESS',(essI/N*100).toFixed(1),'%','#5bd6a0');
+  // histogram overlay (high scenario): weighted-P vs direct-Q terminal
+  const all=[...termX,...dH.arr].filter(isFinite); const lo=Math.min(...all),hi=Math.max(...all),nb=28,wb=(hi-lo)/nb||1;
+  const hW=new Array(nb).fill(0),hD=new Array(nb).fill(0);
+  for(let i=0;i<N;i++){ let bi=Math.floor((termX[i]-lo)/wb); bi=Math.max(0,Math.min(nb-1,bi)); hW[bi]+=wH[i]/wsumH; }
+  dH.arr.forEach(x=>{let bi=Math.floor((x-lo)/wb);bi=Math.max(0,Math.min(nb-1,bi));hD[bi]+=1/N;});
+  if(girHistChart)girHistChart.destroy();
+  girHistChart=new Chart(document.getElementById('girHist'),{type:'bar',
+    data:{labels:hW.map((_,i)=>(lo+wb*(i+.5)).toFixed(0)),datasets:[
+      {label:'Weighted baseline P (dQ/dP)',data:hW,backgroundColor:'rgba(229,84,75,.55)'},
+      {label:'Direct Q simulation',data:hD,type:'line',borderColor:'#35d0c0',pointRadius:0,tension:.3,borderWidth:2}]},
+    options:chartOpts({y:{title:{display:true,text:'probability'}},x:{title:{display:true,text:'terminal abundance (high scenario)'}}})});
+});
+
+/* ================= 06 SIMULATION ================= */
+let simChart=null, lastSim=null;
+document.getElementById('runSim').addEventListener('click',()=>{
+  const c=document.getElementById('simCountry').value, years=+document.getElementById('simYears').value;
+  const interp=document.getElementById('simInterp').value;
+  const st=document.getElementById('simStatus'); st.innerHTML='<span class="spin"></span>integrating…';
+  setTimeout(()=>{
+    const T0=CLIM[c].T, R0=CLIM[c].R;
+    // daily climate over one year
+    const dailyT=[],dailyR=[]; let day=0; const cum=[0]; DAYS.forEach(d=>cum.push(cum[cum.length-1]+d));
+    for(let d=0;d<365;d++){
+      // find month
+      let mi=0; while(mi<11 && d>=cum[mi+1]) mi++;
+      if(interp==='step'){ dailyT.push(T0[mi]); dailyR.push(R0[mi]); }
+      else{ const midThis=cum[mi]+DAYS[mi]/2; let frac,a1,b1;
+        if(d<midThis){ const pm=(mi+11)%12; const midPrev=(cum[mi])-DAYS[pm]/2;
+          frac=(d-midPrev)/((midThis-midPrev)||1); a1=pm;b1=mi;}
+        else{ const nm=(mi+1)%12; const midNext=cum[mi+1]+DAYS[nm]/2;
+          frac=(d-midThis)/((midNext-midThis)||1); a1=mi;b1=nm;}
+        frac=Math.max(0,Math.min(1,frac));
+        dailyT.push(T0[a1]+(T0[b1]-T0[a1])*frac); dailyR.push(R0[a1]+(R0[b1]-R0[a1])*frac); }
+    }
+    const p=PARAMS, dt=1; const nDays=years*365;
+    const m0=metrics(dailyT[0],dailyR[0],p,XC); let X=Math.max(1,0.25*m0.K);
+    const series=[], rows=[];
+    for(let d=0;d<nDays;d++){ const di=d%365; const T=dailyT[di], R=dailyR[di];
+      const mm=metrics(T,R,p,XC); const a=mm.a,b=mm.b,sig=mm.sigma;
+      const xi=gaussianN();
+      X=X*Math.exp((a-b*X-0.5*sig*sig)*dt+sig*Math.sqrt(dt)*xi);
+      if(!isFinite(X)||X<1e-6) X=1e-6;
+      const yr=Math.floor(d/365)+1, mi=(()=>{let k=0;while(k<11&&di>=cum[k+1])k++;return k;})();
+      if(d%3===0) series.push({d,X});
+      rows.push({day:d+1,year:yr,month:MONTHS[mi],T_C:+T.toFixed(2),R_mm:+R.toFixed(1),abundance_X:+X.toFixed(2),Lambda:+mm.Lambda.toFixed(5),persist:mm.persist});
+    }
+    lastSim={c,years,rows};
+    if(simChart)simChart.destroy();
+    simChart=new Chart(document.getElementById('simChart'),{type:'line',
+      data:{labels:series.map(s=>(s.d/365).toFixed(2)),
+        datasets:[{label:`${c} · daily abundance index`,data:series.map(s=>s.X),
+          borderColor:'#35d0c0',backgroundColor:'rgba(53,208,192,.10)',fill:true,pointRadius:0,borderWidth:1.4,tension:.25}]},
+      options:chartOpts({y:{title:{display:true,text:'X (abundance index)'}},x:{title:{display:true,text:'years'},ticks:{maxTicksLimit:years+1}}})});
+    const xsAll=rows.map(r=>r.abundance_X);
+    const mean=xsAll.reduce((a,b)=>a+b,0)/xsAll.length, mx=Math.max(...xsAll), mn=Math.min(...xsAll);
+    const pAbove=xsAll.filter(x=>x>XC).length/xsAll.length;
+    const ro=(k,v,u2)=>`<div class="ro"><div class="k">${k}</div><div class="v">${v}<span class="u">${u2||''}</span></div><div class="bar"></div></div>`;
+    document.getElementById('simStats').innerHTML=
+      ro('Days simulated',rows.length.toLocaleString(),'')+ro('Mean X',fmt(mean,0),'idx')+
+      ro('Peak X',fmt(mx,0),'idx')+ro('Trough X',fmt(mn,1),'idx')+
+      ro(`Days X>${XC}`,pct(pAbove),'')+ro('Horizon',years+' yr','');
+    st.textContent=`done · ${rows.length.toLocaleString()} daily records`;
+    document.getElementById('dlSimCsv').disabled=false; document.getElementById('dlSimXlsx').disabled=false;
+  },30);
+});
+document.getElementById('dlSimCsv').addEventListener('click',()=>{ if(lastSim)
+  download(`simulation_${lastSim.c}_${lastSim.years}yr.csv`,toCsv(lastSim.rows),'text/csv'); });
+document.getElementById('dlSimXlsx').addEventListener('click',()=>{ if(lastSim)
+  toXlsx(lastSim.rows,`simulation_${lastSim.c}_${lastSim.years}yr.xlsx`,lastSim.c); });
+
+/* ================= chart defaults ================= */
+function chartOpts(scales,subtitle){
+  const base={responsive:true,maintainAspectRatio:false,
+    plugins:{legend:{labels:{color:'#8fa6b6',font:{size:11},boxWidth:12}},
+      subtitle:subtitle?{display:true,text:subtitle,color:'#5f7688',font:{size:11}}:undefined,
+      tooltip:{backgroundColor:'#0c141c',borderColor:'#2c465e',borderWidth:1}},
+    scales:{}};
+  const def={grid:{color:'rgba(44,70,94,.4)'},ticks:{color:'#5f7688',font:{size:10},maxRotation:0}};
+  for(const k in (scales||{y:{}})){ base.scales[k]={...def,...scales[k]};
+    if(scales[k].title)base.scales[k].title={...scales[k].title,color:'#5f7688',font:{size:10}}; }
+  if(!base.scales.x) base.scales.x=def;
+  return base;
+}
+
+/* ================= init ================= */
+/* ================= LIVE BACKEND ================= */
+const apiStatus=document.getElementById('apiStatus');
+async function jget(path){ const r=await fetch(API+path); if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); }
+async function connectApi(){
+  const base=document.getElementById('apiUrl').value.trim().replace(/\/+$/,'');
+  if(!base){ apiStatus.textContent='enter a URL first'; return; }
+  API=base; API_RES=document.getElementById('apiRes').value;
+  apiStatus.innerHTML='<span class="spin"></span>connecting…';
+  try{
+    const h=await jget('/health');
+    apiStatus.innerHTML='<span class="spin"></span>fetching '+API_RES+' climate…';
+    let live=0;
+    for(const c of COUNTRIES){
+      try{ const cl=await fetch(`${API}/climate?country=${c}&resolution=${API_RES}`).then(r=>r.json());
+        if(cl.T&&cl.R){ CLIM[c].T=cl.T.slice(); CLIM[c].R=cl.R.slice(); if(cl.source!=='fallback') live++; }
+      }catch(e){}
+    }
+    apiStatus.textContent=`connected · v${h.version||'?'} · ${live}/${COUNTRIES.length} countries on live ${API_RES} climate`+(live<COUNTRIES.length?' (rest fell back)':'');
+    document.getElementById('apiDisconnect').disabled=false;
+    document.getElementById('loadChoro').disabled=false;
+    refreshAll();
+  }catch(e){ API=null; apiStatus.textContent='could not reach backend ('+e.message+') — still using built-in model'; }
+}
+function disconnectApi(){ API=null; CLIM=clone(CLIM0);
+  document.getElementById('apiDisconnect').disabled=true;
+  document.getElementById('loadChoro').disabled=true; clearChoro();
+  apiStatus.textContent='not connected · using built-in model'; refreshAll(); }
+const rampCssStops=STOPS; // reuse
+async function loadChoro(){
+  if(!API||!mapObj) return;
+  const country=document.getElementById('mcCountry')?document.getElementById('mcCountry').value:'Kenya';
+  const key=document.getElementById('mapMetric').value, mi=+document.getElementById('mapMonth').value;
+  const btn=document.getElementById('loadChoro'); const old=btn.textContent; btn.textContent='loading…'; btn.disabled=true;
+  try{
+    // choropleth for every focus country at the selected month/metric
+    clearChoro(); choroLayer=L.layerGroup().addTo(markerLayer._map||mapObj);
+    const probKeys={exceed:1,persist:1};
+    for(const c of COUNTRIES){
+      const url=`${API}/choropleth?country=${c}&month=${mi+1}&xc=${XC}&resolution=${API_RES}`;
+      const fc=await fetch(url).then(r=>{ if(!r.ok) throw new Error('choropleth '+r.status); return r.json();});
+      const vals=fc.features.map(f=>f.properties[key]).filter(v=>v!=null&&isFinite(v));
+      let lo=Math.min(...vals), hi=Math.max(...vals); if(probKeys[key]){lo=0;hi=1;} if(lo===hi)hi=lo+1e-6;
+      L.geoJSON(fc,{style:f=>{ const v=f.properties[key];
+        return {weight:.6,color:'#0a1219',fillOpacity:v==null?0.05:0.8,fillColor:v==null?'#26404f':ramp((v-lo)/(hi-lo))};},
+        onEachFeature:(f,ly)=>{const p=f.properties; ly.bindPopup(
+          `<b>${p.unit}</b> · ${c}<br>${p.month} · lvl ${p.level}<br>T ${fmt(p.T_C,1)}°C · R ${fmt(p.R_mm,0)}mm<br>`+
+          `Λ ${fmt(p.Lambda,4)}<br>P(X>${XC}) ${pct(p.exceed)}<br>mean ${fmt(p.stationary_mean,0)}`);}
+      }).addTo(choroLayer);
+    }
+    document.getElementById('clearChoro').disabled=false;
+  }catch(e){ alert('Sub-national layer needs the geo stack + cached WorldClim/GADM on the backend.\n\n'+e.message); }
+  btn.textContent=old; btn.disabled=false;
+}
+function clearChoro(){ if(choroLayer){ try{mapObj.removeLayer(choroLayer);}catch(e){} choroLayer=null; }
+  const cc=document.getElementById('clearChoro'); if(cc) cc.disabled=true; }
+document.getElementById('apiConnect').addEventListener('click',connectApi);
+document.getElementById('apiDisconnect').addEventListener('click',disconnectApi);
+document.getElementById('loadChoro').addEventListener('click',loadChoro);
+document.getElementById('clearChoro').addEventListener('click',clearChoro);
+
+/* ================= VALIDATION SCREEN ================= */
+const COUNTRY_ISO={Kenya:'KEN',Cameroon:'CMR',Mozambique:'MOZ'};
+async function jpost(path,body){ const r=await fetch(API+path,{method:'POST',
+  headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(!r.ok){ let d=''; try{d=(await r.json()).detail||'';}catch(e){} throw new Error(r.status+' '+d);} return r.json(); }
+fillMonths(document.getElementById('valMonth'));
+document.getElementById('valCountry').innerHTML=COUNTRIES.map(c=>`<option>${c}</option>`).join('');
+document.getElementById('spCountry').innerHTML=COUNTRIES.map(c=>`<option>${c}</option>`).join('');
+let valScatterChart=null, valLast=null;
+function updateValGate(){ const on=!!API;
+  document.getElementById('valNeedsApi').style.display=on?'none':'block';
+  document.getElementById('valPanel').style.display=on?'block':'none'; }
+document.querySelector('#nav button[data-v="validation"]').addEventListener('click',updateValGate);
+document.getElementById('valMode').addEventListener('change',e=>{ const m=e.target.value;
+  document.getElementById('valUpload').style.display=m==='upload'?'block':'none';
+  document.getElementById('valSub').style.display=m==='subnational'?'block':'none';
+  document.getElementById('valYears').style.display=m==='panel'?'block':'none';
+  document.getElementById('valSubPanel').style.display=m==='subpanel'?'block':'none'; });
+const featLabel=f=>({Lambda_mean:'Λ (annual mean)',persist_frac:'Persistence fraction',
+  abundance_mean:'Mean abundance',abundance_peak:'Peak abundance',Lambda:'Λ',exceed:'Exceedance',
+  stationary_mean:'Stationary mean',sigma:'Volatility σ',persist:'Persistence'}[f]
+  ||(f.startsWith('exceed_')?('Exceedance x_c='+f.split('_')[1]):f));
+function parseCsvIncidence(text){ const lines=text.trim().split(/\r?\n/);
+  const hdr=lines[0].split(',').map(s=>s.trim().toLowerCase());
+  const ik=hdr.indexOf('iso3'), vk=hdr.indexOf('value'); const rows=[];
+  for(let i=1;i<lines.length;i++){ const c=lines[i].split(','); if(c.length<2)continue;
+    rows.push({iso3:(ik>=0?c[ik]:c[0]).trim().toUpperCase(), value:parseFloat(vk>=0?c[vk]:c[1])}); }
+  return rows.filter(r=>isFinite(r.value)); }
+function renderVal(res){
+  valLast=res; const rows=res.results||[]; const st=document.getElementById('valStatus');
+  if(!rows.length){ st.textContent=res.warning||'No correlations (need ≥3 matched units).';
+    document.getElementById('valTbl').innerHTML='<tbody><tr><td class="chip" style="text-align:left">'+(res.warning||'Not enough matched units.')+'</td></tr></tbody>';
+    document.getElementById('valHeadline').innerHTML=''; if(valScatterChart)valScatterChart.destroy(); return; }
+  st.textContent=`matched n=${res.n}`+(res.country?` · ${res.country} ${res.month} · ${res.units_scored||''} units`:'')+(res.panel_rows?` · ${res.panel_rows} country-years (${res.years?res.years[0]+'–'+res.years[1]:''})`:'');
+  const bm=res.best_metric, bt=res.best_exceedance_threshold;
+  const ro=(k,v,u,col)=>`<div class="ro"><div class="k">${k}</div><div class="v">${v}<span class="u">${u||''}</span></div><div class="bar" style="background:${col||'var(--accent)'}"></div></div>`;
+  document.getElementById('valHeadline').innerHTML=
+    ro('Best metric',featLabel(bm.feature),'','var(--accent)')+
+    ro('Pearson r',bm.pearson_r.toFixed(3),'',Math.abs(bm.pearson_r)>0.5?'var(--ok)':'var(--warn)')+
+    ro('Spearman ρ',bm.spearman_r.toFixed(3),'')+
+    (bt?ro('Best threshold','x_c='+bt.threshold,'r='+bt.pearson_r.toFixed(2),'var(--ok)'):'');
+  document.getElementById('valTbl').innerHTML=`<thead><tr><th>Feature</th><th>Pearson r</th><th>p</th><th>Spearman ρ</th><th>n</th></tr></thead><tbody>`+
+    rows.map(r=>`<tr><td style="text-align:left">${featLabel(r.feature)}</td>
+      <td style="color:${Math.abs(r.pearson_r)>0.5?'var(--ok)':'var(--txt)'}">${r.pearson_r.toFixed(3)}</td>
+      <td>${r.pearson_p<0.001?r.pearson_p.toExponential(1):r.pearson_p.toFixed(3)}</td>
+      <td>${r.spearman_r.toFixed(3)}</td><td>${r.n}</td></tr>`).join('')+`</tbody>`;
+  document.getElementById('valNote').textContent=(res.note||'')+(res.note_demo?(' '+res.note_demo):'');
+  const pts=(res.scatter||[]).map(p=>({x:p.x,y:p.y}));
+  if(valScatterChart)valScatterChart.destroy();
+  valScatterChart=new Chart(document.getElementById('valScatter'),{type:'scatter',
+    data:{datasets:[{label:featLabel(res.scatter_feature)+' vs incidence',data:pts,backgroundColor:'#35d0c0',pointRadius:5}]},
+    options:chartOpts({x:{title:{display:true,text:featLabel(res.scatter_feature)}},y:{title:{display:true,text:'incidence'}}})});
+  document.getElementById('dlVal').disabled=false;
+}
+document.getElementById('runVal').addEventListener('click',async()=>{
+  if(!API){ updateValGate(); return; }
+  const mode=document.getElementById('valMode').value, st=document.getElementById('valStatus');
+  st.innerHTML='<span class="spin"></span>running…';
+  try{
+    let res;
+    if(mode==='builtin'){ res=await jpost('/validate/correlation',{use_builtin:true}); }
+    else if(mode==='panel'){
+      const y0=+document.getElementById('valYrFrom').value, y1=+document.getElementById('valYrTo').value;
+      st.innerHTML='<span class="spin"></span>building '+(y1-y0+1)+'-year panel (downloading climate)…';
+      res=await jpost('/validate/panel',{years:[y0,y1]});
+    }
+    else if(mode==='subpanel'){
+      const country=document.getElementById('spCountry').value;
+      const y0=+document.getElementById('spFrom').value, y1=+document.getElementById('spTo').value;
+      const tmpl=document.getElementById('spTemplate').value.trim();
+      if(!tmpl){st.textContent='enter the MAP raster path template (use {year})';return;}
+      st.innerHTML='<span class="spin"></span>building '+country+' sub-national × '+(y1-y0+1)+'-year panel (heavy)…';
+      res=await jpost('/validate/subnational-panel',{country,years:[y0,y1],raster_template:tmpl});
+    }
+    else if(mode==='upload'){
+      const f=document.getElementById('valFile').files[0]; if(!f){st.textContent='choose a CSV first';return;}
+      const inc=parseCsvIncidence(await f.text());
+      const units={}; for(const c of COUNTRIES){ const iso=COUNTRY_ISO[c]||c; units[iso]={T:CLIM[c].T.slice(),R:CLIM[c].R.slice(),iso3:iso}; }
+      res=await jpost('/validate/correlation',{units,incidence:inc,keys:['iso3']});
+    } else {
+      const country=document.getElementById('valCountry').value, month=+document.getElementById('valMonth').value+1;
+      const raster=document.getElementById('valRaster').value.trim();
+      if(!raster){st.textContent='enter the MAP raster path on the server';return;}
+      res=await jpost('/validate/subnational',{country,month,xc:XC,resolution:API_RES,raster_path:raster});
+    }
+    renderVal(res);
+  }catch(e){ st.textContent='error: '+e.message; }
+});
+document.getElementById('dlVal').addEventListener('click',()=>{ if(!valLast||!valLast.results)return;
+  download('validation_correlations.csv',toCsv(valLast.results.map(r=>({feature:r.feature,
+    pearson_r:r.pearson_r,pearson_p:r.pearson_p,spearman_r:r.spearman_r,spearman_p:r.spearman_p,n:r.n}))),'text/csv'); });
+
+function refreshAll(){ renderMonthly(); drawMap(); renderMcCentral(); if(document.getElementById('girDensity')) drawGirDensity(); updateValGate(); }
+function renderMath(){ if(window.renderMathInElement) renderMathInElement(document.getElementById('v-model'),
+  {delimiters:[{left:'$$',right:'$$',display:true},{left:'\\(',right:'\\)',display:false}]}); }
+
+renderParamTable();
+renderMcCentral();
+renderMonthly();
+drawGirDensity();
+renderMath();
+try{ initMap(); }catch(e){ document.getElementById('map').innerHTML='<div style="padding:20px;color:#8fa6b6">Map library unavailable offline — country values are in the table below.</div>'; drawMap(); }
+
+});
+</script>
+</body>
+</html>
