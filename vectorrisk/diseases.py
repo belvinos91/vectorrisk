@@ -25,23 +25,43 @@ from typing import Dict
 VECTOR_GROUPS: Dict[str, dict] = {
     "Anopheles": {"symbiont": "Microsporidia MB (natural, transmission-blocking)",
                   "thermal_note": "Model calibrated for Anopheles (T-opt ~25-27C).",
-                  "model_ready": True},
+                  "model_ready": True,
+                  # calibrated Anopheles set = model defaults (empty override)
+                  "params": {},
+                  "evidence": "calibrated"},
     "Aedes": {"symbiont": "Wolbachia (introduced for biocontrol; not native)",
               "thermal_note": "Warmer optimum (~29C) and container breeding; re-parameterise.",
-              "model_ready": False},
+              "model_ready": False,
+              # literature-informed shift toward warmer optima (Mordecai et al. 2017,
+              # Ryan et al. 2019). Values are indicative, not calibrated.
+              "params": {"T_E_opt": 29.0, "T_L_opt": 29.5, "T_P_opt": 29.5,
+                         "T_K_opt": 29.0, "T_delta_opt": 29.0,
+                         "R_L": 180.0, "sigma0": 0.18},
+              "evidence": "literature-based (indicative)"},
     "Culex": {"symbiont": "Wolbachia (naturally present in Culex pipiens complex)",
               "thermal_note": "Tolerates organically enriched water; re-parameterise.",
-              "model_ready": False},
+              "model_ready": False,
+              "params": {"T_E_opt": 27.0, "T_L_opt": 27.5, "T_P_opt": 27.5,
+                         "T_K_opt": 27.0, "T_delta_opt": 27.0, "R_L": 260.0},
+              "evidence": "literature-based (indicative)"},
     "Sandfly": {"symbiont": "None established (Wolbachia reported in some populations)",
                 "thermal_note": "Phlebotomine biology differs; not an abundance-model target yet.",
-                "model_ready": False},
+                "model_ready": False, "params": {}, "evidence": "not modelled"},
     "Tsetse": {"symbiont": "Wigglesworthia glossinidia; Sodalis glossinidius; Wolbachia",
                "thermal_note": "Larviparous, single larva; distinct dynamics; re-parameterise.",
-               "model_ready": False},
+               "model_ready": False, "params": {}, "evidence": "not modelled"},
     "Tick": {"symbiont": "Endosymbionts (Coxiella-like, Rickettsia); NB Borrelia is the pathogen",
              "thermal_note": "Multi-host, humidity-driven; not a mosquito-abundance target.",
-             "model_ready": False},
+             "model_ready": False, "params": {}, "evidence": "not modelled"},
 }
+
+
+def params_for_vector(group: str, base: dict) -> dict:
+    """Return model params for a vector group by overriding the base params."""
+    g = VECTOR_GROUPS.get(group, {})
+    out = dict(base)
+    out.update(g.get("params", {}))
+    return out
 
 
 def _d(vector, group, species, distribution, habitat, pathogen, treatment,

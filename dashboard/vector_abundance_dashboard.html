@@ -269,6 +269,15 @@ footer{border-top:1px solid var(--line);color:var(--faint);font-size:11.5px;text
         </select>
       </label>
       <label class="fld">
+        <span class="lb">Vector model</span>
+        <select id="vectorSel">
+          <option>Anopheles</option>
+          <option>Aedes</option>
+          <option>Culex</option>
+        </select>
+      </label>
+      <div id="vectorBadge" class="legend" style="margin:-4px 0 12px"><span class="tag ok">calibrated</span></div>
+      <label class="fld">
         <span class="lb">Metric</span>
         <select id="mapMetric">
           <option value="exceed">Exceedance P(X &gt; x_c)</option>
@@ -701,6 +710,20 @@ const clone=o=>JSON.parse(JSON.stringify(o));
 let RANGES=clone(RANGES0);
 const midpoints=r=>{const p={};for(const k in r)p[k]=(r[k][0]+r[k][1])/2;return p;};
 let PARAMS=midpoints(RANGES);
+const VECTOR_KEYS=['T_E_opt','T_L_opt','T_P_opt','T_K_opt','T_delta_opt','R_L','sigma0'];
+const BASE_OPTS={}; VECTOR_KEYS.forEach(k=>BASE_OPTS[k]=PARAMS[k]);   // Anopheles/default snapshot
+let VECTOR='Anopheles';
+let VGROUPS={   // fallback overrides (also refreshed from /diseases when connected)
+  Anopheles:{params:{},evidence:'calibrated'},
+  Aedes:{params:{T_E_opt:29,T_L_opt:29.5,T_P_opt:29.5,T_K_opt:29,T_delta_opt:29,R_L:180,sigma0:0.18},evidence:'literature-based (indicative)'},
+  Culex:{params:{T_E_opt:27,T_L_opt:27.5,T_P_opt:27.5,T_K_opt:27,T_delta_opt:27,R_L:260},evidence:'literature-based (indicative)'}
+};
+function applyVector(group){
+  VECTOR=group; const ov=(VGROUPS[group]&&VGROUPS[group].params)||{};
+  VECTOR_KEYS.forEach(k=>{ PARAMS[k]=(k in ov)?ov[k]:BASE_OPTS[k]; });
+  if(typeof renderParamTable==='function') renderParamTable();
+  refreshAll();
+}
 
 /* ---------- countries + representative climate (illustrative) ---------- */
 const MONTHS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -873,6 +896,10 @@ document.getElementById('mapMetric').addEventListener('change',drawMap);
 document.getElementById('mapMonth').addEventListener('change',drawMap);
 document.getElementById('regionFilter').addEventListener('change',e=>{ if(API) loadCountriesFromApi(e.target.value); });
 document.getElementById('tempVar').addEventListener('change',e=>{ TEMP_VAR=e.target.value; if(API) loadCountriesFromApi(REGION_FILTER); });
+function updateVectorBadge(){ const g=VGROUPS[VECTOR]||{}; const cal=(g.evidence||'').startsWith('calibrated');
+  const b=document.getElementById('vectorBadge'); if(b) b.innerHTML=`<span class="tag ${cal?'ok':'no'}">${cal?'calibrated':'indicative'}</span> <span style="color:var(--muted)">${VECTOR} thermal model</span>`; }
+document.getElementById('vectorSel').addEventListener('change',e=>{ applyVector(e.target.value); updateVectorBadge();
+  if(API && choroLayer){ loadChoro(); } });
 
 /* ================= 03 MONTHLY ================= */
 let monthCountry="Kenya", climateEditable=false;
@@ -1274,7 +1301,7 @@ async function loadChoro(){
     clearChoro(); choroLayer=L.layerGroup().addTo(markerLayer._map||mapObj);
     const probKeys={exceed:1,persist:1};
     {
-      const url=`${API}/choropleth?country=${encodeURIComponent(c)}&month=${mi+1}&xc=${XC}&resolution=${API_RES}&temp=${TEMP_VAR}`;
+      const url=`${API}/choropleth?country=${encodeURIComponent(c)}&month=${mi+1}&xc=${XC}&resolution=${API_RES}&temp=${TEMP_VAR}&vector=${VECTOR}`;
       const fc=await fetch(url).then(r=>{ if(!r.ok) throw new Error('choropleth '+r.status); return r.json();});
       const vals=fc.features.map(f=>f.properties[key]).filter(v=>v!=null&&isFinite(v));
       let lo=Math.min(...vals), hi=Math.max(...vals); if(probKeys[key]){lo=0;hi=1;} if(lo===hi)hi=lo+1e-6;
@@ -1403,6 +1430,9 @@ async function loadDiseases(){
   try{
     const af=document.getElementById('disAfrican').checked;
     const d=await jget('/diseases?african_only='+af);
+    if(d.vector_groups){ for(const g in d.vector_groups){ VGROUPS[g]=VGROUPS[g]||{}; 
+      VGROUPS[g].params=d.vector_groups[g].params||VGROUPS[g].params||{};
+      VGROUPS[g].evidence=d.vector_groups[g].evidence||VGROUPS[g].evidence; } updateVectorBadge(); }
     const names=Object.keys(d.diseases||{});
     const sel=document.getElementById('disSelect');
     sel.innerHTML=names.map(n=>`<option>${n}</option>`).join('');
@@ -1435,6 +1465,18 @@ async function renderDisease(name){
       ? `<b>Model applies directly.</b> ${d.thermal_note||''} Risk maps for ${name} use the calibrated Anopheles abundance model.`
       : `<b>Indicative only.</b> ${d.thermal_note||''} The abundance maps are calibrated for <em>Anopheles</em>; treat ${name} (${d.thermal_group}) output as provisional until the model is re-parameterised for this vector.`;
     document.getElementById('disModelNote').style.borderColor=ready?'rgba(91,214,160,.35)':'rgba(242,161,84,.3)';
+    // offer to drive the map model with this disease's vector (if modelled)
+    const modelled=['Anopheles','Aedes','Culex'].includes(d.thermal_group);
+    let act=document.getElementById('disApplyVec');
+    if(modelled){
+      document.getElementById('disModelNote').insertAdjacentHTML('beforeend',
+        ` <button class="btn ghost" id="disApplyVec" style="margin-top:8px">Use ${d.thermal_group} in the map model</button>`);
+      document.getElementById('disApplyVec').addEventListener('click',()=>{
+        VECTOR=d.thermal_group; applyVector(VECTOR); updateVectorBadge();
+        const vs=document.getElementById('vectorSel'); if(vs) vs.value=VECTOR;
+        alert('Map model set to '+VECTOR+'. Open the Map tab to see '+name+'-relevant risk'+(ready?'.':' (indicative — not yet calibrated for this vector).'));
+      });
+    }
   }catch(e){ document.getElementById('disDetail').innerHTML='<span class="chip">error: '+e.message+'</span>'; }
 }
 document.getElementById('disSelect').addEventListener('change',e=>renderDisease(e.target.value));

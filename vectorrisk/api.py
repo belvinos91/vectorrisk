@@ -155,8 +155,11 @@ def climate_all(region: str = Query(None), subsaharan_only: bool = Query(False),
 def metrics(country: str = Query(...), month: int = Query(1, ge=1, le=12),
             xc: float = Query(C.DEFAULT_XC),
             resolution: str = Query(C.DEFAULT_RESOLUTION),
-            live: bool = Query(True), temp: str = Query("mean")):
+            live: bool = Query(True), temp: str = Query("mean"),
+            vector: str = Query("Anopheles")):
     cl = climate(country, resolution, live, temp)
+    from .diseases import params_for_vector
+    p = params_for_vector(vector, C.central_params())
     if cl.get("T") is None or cl.get("R") is None:
         return {"country": country, "month": C.MONTH_NAMES[month - 1],
                 "T": None, "R": None, "xc": xc,
@@ -164,8 +167,8 @@ def metrics(country: str = Query(...), month: int = Query(1, ge=1, le=12),
                 "metrics": None,
                 "detail": cl.get("detail", "climate not available; fetch WorldClim first")}
     T, R = cl["T"][month - 1], cl["R"][month - 1]
-    m = compute_metrics(T, R, None, xc)
-    return {"country": country, "month": C.MONTH_NAMES[month - 1],
+    m = compute_metrics(T, R, p, xc)
+    return {"country": country, "month": C.MONTH_NAMES[month - 1], "vector": vector,
             "T": T, "R": R, "xc": xc, "climate_source": cl.get("source", "live"),
             "metrics": {k: (float(v) if v is not None else None) for k, v in m.items()}}
 
@@ -220,11 +223,15 @@ def admin(country: str = Query(...), level: Optional[int] = None):
 def choropleth(country: str = Query(...), month: int = Query(1, ge=1, le=12),
                xc: float = Query(C.DEFAULT_XC),
                resolution: str = Query(C.DEFAULT_RESOLUTION),
-               level: Optional[int] = None, temp: str = Query("mean")):
+               level: Optional[int] = None, temp: str = Query("mean"),
+               vector: str = Query("Anopheles")):
     try:
         from .zonal import admin_metric_featurecollection
+        from .diseases import params_for_vector
+        p = params_for_vector(vector, C.central_params())
         return admin_metric_featurecollection(country, month, xc, resolution,
-                                              level, CACHE, temp_var=C.temp_var_of(temp))
+                                              level, CACHE, params=p,
+                                              temp_var=C.temp_var_of(temp))
     except Exception as e:
         raise HTTPException(503,
             f"Choropleth needs the geo stack + WorldClim/GADM cache: {e}")
