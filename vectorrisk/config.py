@@ -113,15 +113,95 @@ class Country:
     iso3: str
     lat: float
     lng: float
-    place: str
-    admin_level: int = 2
+    region: str = "East"          # North | West | Central | East | Southern
+    place: str = ""
+    admin_level: int = 1          # geoBoundaries/GADM level used as sub-national unit
+
+    @property
+    def subsaharan(self) -> bool:
+        return self.region != "North"
 
 
-COUNTRIES: Dict[str, Country] = {
-    "Kenya": Country("Kenya", "KEN", -0.10, 34.75, "Lake Victoria basin (west)", 2),
-    "Cameroon": Country("Cameroon", "CMR", 3.87, 11.52, "Central plateau (Yaoundé)", 2),
-    "Mozambique": Country("Mozambique", "MOZ", -19.84, 34.84, "Central coast (Beira)", 2),
-}
+REGIONS = ("North", "West", "Central", "East", "Southern")
+
+
+def _c(name, iso3, lat, lng, region, place="", admin=1):
+    return Country(name, iso3, lat, lng, region, place, admin)
+
+
+COUNTRIES: Dict[str, Country] = {c.name: c for c in [
+    # --- North Africa (not sub-Saharan) ---
+    _c("Algeria", "DZA", 28.03, 1.66, "North"),
+    _c("Egypt", "EGY", 26.82, 30.80, "North"),
+    _c("Libya", "LBY", 26.34, 17.23, "North"),
+    _c("Morocco", "MAR", 31.79, -7.09, "North"),
+    _c("Sudan", "SDN", 12.86, 30.22, "North"),
+    _c("Tunisia", "TUN", 33.89, 9.54, "North"),
+    # --- West Africa ---
+    _c("Benin", "BEN", 9.31, 2.32, "West"),
+    _c("Burkina Faso", "BFA", 12.24, -1.56, "West"),
+    _c("Cabo Verde", "CPV", 16.00, -24.01, "West"),
+    _c("Cote d'Ivoire", "CIV", 7.54, -5.55, "West"),
+    _c("Gambia", "GMB", 13.44, -15.31, "West"),
+    _c("Ghana", "GHA", 7.95, -1.02, "West"),
+    _c("Guinea", "GIN", 9.95, -9.70, "West"),
+    _c("Guinea-Bissau", "GNB", 11.80, -15.18, "West"),
+    _c("Liberia", "LBR", 6.43, -9.43, "West"),
+    _c("Mali", "MLI", 17.57, -4.00, "West"),
+    _c("Mauritania", "MRT", 21.01, -10.94, "West"),
+    _c("Niger", "NER", 17.61, 8.08, "West"),
+    _c("Nigeria", "NGA", 9.08, 8.68, "West"),
+    _c("Senegal", "SEN", 14.50, -14.45, "West"),
+    _c("Sierra Leone", "SLE", 8.46, -11.78, "West"),
+    _c("Togo", "TGO", 8.62, 0.82, "West"),
+    # --- Central Africa ---
+    _c("Angola", "AGO", -11.20, 17.87, "Central"),
+    _c("Cameroon", "CMR", 3.87, 11.52, "Central", "Central plateau (Yaounde)", 2),
+    _c("Central African Republic", "CAF", 6.61, 20.94, "Central"),
+    _c("Chad", "TCD", 15.45, 18.73, "Central"),
+    _c("Congo", "COG", -0.23, 15.83, "Central"),
+    _c("DR Congo", "COD", -4.04, 21.76, "Central"),
+    _c("Equatorial Guinea", "GNQ", 1.65, 10.27, "Central"),
+    _c("Gabon", "GAB", -0.80, 11.61, "Central"),
+    _c("Sao Tome and Principe", "STP", 0.19, 6.61, "Central"),
+    # --- East Africa ---
+    _c("Burundi", "BDI", -3.37, 29.92, "East"),
+    _c("Comoros", "COM", -11.65, 43.33, "East"),
+    _c("Djibouti", "DJI", 11.83, 42.59, "East"),
+    _c("Eritrea", "ERI", 15.18, 39.78, "East"),
+    _c("Ethiopia", "ETH", 9.15, 40.49, "East"),
+    _c("Kenya", "KEN", -0.10, 34.75, "East", "Lake Victoria basin (west)", 2),
+    _c("Madagascar", "MDG", -18.77, 46.87, "East"),
+    _c("Malawi", "MWI", -13.25, 34.30, "East"),
+    _c("Mauritius", "MUS", -20.35, 57.55, "East"),
+    _c("Mozambique", "MOZ", -19.84, 34.84, "East", "Central coast (Beira)", 2),
+    _c("Rwanda", "RWA", -1.94, 29.87, "East"),
+    _c("Seychelles", "SYC", -4.68, 55.49, "East"),
+    _c("Somalia", "SOM", 5.15, 46.20, "East"),
+    _c("South Sudan", "SSD", 6.88, 31.31, "East"),
+    _c("Tanzania", "TZA", -6.37, 34.89, "East"),
+    _c("Uganda", "UGA", 1.37, 32.29, "East"),
+    _c("Zambia", "ZMB", -13.13, 27.85, "East"),
+    _c("Zimbabwe", "ZWE", -19.02, 29.15, "East"),
+    # --- Southern Africa ---
+    _c("Botswana", "BWA", -22.33, 24.68, "Southern"),
+    _c("Eswatini", "SWZ", -26.52, 31.47, "Southern"),
+    _c("Lesotho", "LSO", -29.61, 28.23, "Southern"),
+    _c("Namibia", "NAM", -22.96, 18.49, "Southern"),
+    _c("South Africa", "ZAF", -30.56, 22.94, "Southern"),
+]}
+
+
+def filter_countries(region: str = None, subsaharan_only: bool = False):
+    """Country names filtered by region and/or sub-Saharan flag."""
+    out = []
+    for name, c in COUNTRIES.items():
+        if region and region not in ("All", "all") and c.region != region:
+            continue
+        if subsaharan_only and not c.subsaharan:
+            continue
+        out.append(name)
+    return out
 
 MONTHS = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12)
 MONTH_NAMES = ("Jan", "Feb", "Mar", "Apr", "May", "Jun",

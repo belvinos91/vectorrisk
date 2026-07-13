@@ -93,13 +93,29 @@ def get_config():
 
 
 @app.get("/countries")
-def countries():
+def countries(region: str = Query(None), subsaharan_only: bool = Query(False)):
+    names = C.filter_countries(region, subsaharan_only)
     return {name: {"iso3": c.iso3, "lat": c.lat, "lng": c.lng,
+                   "region": c.region, "subsaharan": c.subsaharan,
                    "place": c.place, "admin_level": c.admin_level}
-            for name, c in C.COUNTRIES.items()}
+            for name, c in C.COUNTRIES.items() if name in names}
+
+
+@app.get("/regions")
+def regions():
+    return {"regions": list(C.REGIONS)}
 
 
 # ----- climate (real zonal means, fallback to representative) ------------
+def _fallback_climate(country: str):
+    fb = C.FALLBACK_CLIMATOLOGY.get(country)
+    if fb is None:
+        return {"country": country, "T": None, "R": None, "source": "pending",
+                "detail": "No representative climate; run `vectorrisk fetch` and use live."}
+    return {"country": country, "T": list(fb["T"]), "R": list(fb["R"]),
+            "source": "fallback"}
+
+
 @app.get("/climate")
 def climate(country: str = Query(...),
             resolution: str = Query(C.DEFAULT_RESOLUTION),
@@ -111,13 +127,27 @@ def climate(country: str = Query(...),
             from .zonal import country_monthly_climatology
             return country_monthly_climatology(country, resolution, CACHE)
         except Exception as e:  # geo stack or data unavailable
-            fb = C.FALLBACK_CLIMATOLOGY[country]
-            return {"country": country, "resolution": resolution,
-                    "T": list(fb["T"]), "R": list(fb["R"]),
-                    "source": "fallback", "detail": str(e)}
-    fb = C.FALLBACK_CLIMATOLOGY[country]
-    return {"country": country, "T": list(fb["T"]), "R": list(fb["R"]),
-            "source": "fallback"}
+            fb = _fallback_climate(country)
+            fb["resolution"] = resolution
+            fb["detail"] = str(e)
+            return fb
+    return _fallback_climate(country)
+
+
+@app.get("/climate/all")
+def climate_all(region: str = Query(None), subsaharan_only: bool = Query(False),
+                resolution: str = Query(C.DEFAULT_RESOLUTION),
+                live: bool = Query(True)):
+    """Climate for many countries at once (drives the multi-country dashboard)."""
+    names = C.filter_countries(region, subsaharan_only)
+    out = {}
+    for name in names:
+        try:
+            out[name] = climate(name, resolution, live)
+        except Exception as e:
+            out[name] = {"country": name, "T": None, "R": None,
+                         "source": "error", "detail": str(e)}
+    return {"resolution": resolution, "count": len(out), "climate": out}
 
 
 @app.get("/metrics")
@@ -126,6 +156,12 @@ def metrics(country: str = Query(...), month: int = Query(1, ge=1, le=12),
             resolution: str = Query(C.DEFAULT_RESOLUTION),
             live: bool = Query(True)):
     cl = climate(country, resolution, live)
+    if cl.get("T") is None or cl.get("R") is None:
+        return {"country": country, "month": C.MONTH_NAMES[month - 1],
+                "T": None, "R": None, "xc": xc,
+                "climate_source": cl.get("source", "pending"),
+                "metrics": None,
+                "detail": cl.get("detail", "climate not available; fetch WorldClim first")}
     T, R = cl["T"][month - 1], cl["R"][month - 1]
     m = compute_metrics(T, R, None, xc)
     return {"country": country, "month": C.MONTH_NAMES[month - 1],
@@ -479,4 +515,3 @@ def validate_subnational_panel(body: SubPanelBody):
     except Exception as e:
         raise HTTPException(503, f"Sub-national panel unavailable "
                                  f"(needs geo+ts stack + GADM + TerraClimate + MAP rasters): {e}")
-

@@ -248,6 +248,18 @@ footer{border-top:1px solid var(--line);color:var(--faint);font-size:11.5px;text
     <div class="card">
       <div class="eyebrow">Controls</div>
       <label class="fld" style="margin-top:12px">
+        <span class="lb">Region</span>
+        <select id="regionFilter" disabled>
+          <option>Sub-Saharan</option>
+          <option>All</option>
+          <option>West</option>
+          <option>Central</option>
+          <option>East</option>
+          <option>Southern</option>
+          <option>North</option>
+        </select>
+      </label>
+      <label class="fld">
         <span class="lb">Metric</span>
         <select id="mapMetric">
           <option value="exceed">Exceedance P(X &gt; x_c)</option>
@@ -664,7 +676,9 @@ const CLIM0={
     R:[220,200,150,60,35,30,25,25,30,60,120,180] }
 };
 let CLIM=clone(CLIM0);
-const COUNTRIES=Object.keys(CLIM0);
+let COUNTRIES=Object.keys(CLIM0);          // dynamic: replaced by API list when connected
+let COUNTRY_META={};                        // name -> {iso3,region,subsaharan,lat,lng,place}
+let REGION_FILTER='Sub-Saharan';            // default view
 const XC_SET=[250,500,700,1000,1250,1500];
 let XC=500;
 let API=null, API_RES="30s", choroLayer=null;   // live backend state
@@ -759,6 +773,15 @@ function metricRange(key,monthIdx){
   if(lo===hi){hi=lo+1e-6;}
   return {lo,hi,vals};
 }
+function hasClim(c,mi){ const e=CLIM[c]; return e&&Array.isArray(e.T)&&Array.isArray(e.R)&&isFinite(e.T[mi])&&isFinite(e.R[mi]); }
+function metricRange(key,monthIdx){
+  const vals=COUNTRIES.filter(c=>hasClim(c,monthIdx))
+    .map(c=>central(CLIM[c].T[monthIdx],CLIM[c].R[monthIdx],XC)[key]).filter(v=>isFinite(v));
+  let lo=vals.length?Math.min(...vals):0, hi=vals.length?Math.max(...vals):1;
+  if(METRICS[key].prob){lo=0;hi=1;}
+  if(lo===hi){hi=lo+1e-6;}
+  return {lo,hi};
+}
 function initMap(){
   mapObj=L.map('map',{zoomControl:true,attributionControl:false}).setView([ -2,25 ],3.2);
   try{ L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:10,subdomains:'abcd'}).addTo(mapObj); }catch(e){}
@@ -776,48 +799,75 @@ function drawMap(){
   markerLayer.clearLayers();
   const rows=[];
   COUNTRIES.forEach(c=>{
-    const T=CLIM[c].T[mi], R=CLIM[c].R[mi], m=central(T,R,XC);
-    const v=m[key], t=(v-lo)/(hi-lo);
-    L.circleMarker([CLIM[c].lat,CLIM[c].lng],{
-      radius:11+16*Math.max(0,Math.min(1,t)), color:'#0a1219', weight:1.5,
-      fillColor:ramp(t), fillOpacity:.9
-    }).bindPopup(
-      `<b>${c}</b> · ${MONTHS[mi]}<br>${CLIM[c].place}<br>`+
-      `T ${T}°C · R ${R} mm<br>`+
-      `Λ ${fmt(m.Lambda,4)}<br>P(X>${XC}) ${pct(m.exceed)}<br>`+
-      `mean ${fmt(m.statMean,0)}<br>persist ${m.persist?'yes':'no'}`
-    ).addTo(markerLayer);
-    rows.push({c,T,R,m});
+    const e=CLIM[c]||{}; const lat=e.lat, lng=e.lng;
+    if(lat==null||lng==null) return;
+    if(hasClim(c,mi)){
+      const T=e.T[mi], R=e.R[mi], m=central(T,R,XC);
+      const v=m[key], t=(v-lo)/(hi-lo);
+      L.circleMarker([lat,lng],{radius:9+15*Math.max(0,Math.min(1,t)),color:'#0a1219',weight:1.5,
+        fillColor:ramp(t),fillOpacity:.9}).bindPopup(
+        `<b>${c}</b> · ${MONTHS[mi]}<br>${e.place||''}<br>T ${T}°C · R ${R} mm<br>`+
+        `Λ ${fmt(m.Lambda,4)}<br>P(X>${XC}) ${pct(m.exceed)}<br>mean ${fmt(m.statMean,0)}<br>persist ${m.persist?'yes':'no'}`
+      ).addTo(markerLayer);
+      rows.push({c,T,R,m});
+    } else {
+      L.circleMarker([lat,lng],{radius:6,color:'#33485a',weight:1,fillColor:'#26404f',fillOpacity:.5})
+        .bindPopup(`<b>${c}</b><br>climate not loaded yet<br>(run <code>vectorrisk fetch</code> on the server)`).addTo(markerLayer);
+      rows.push({c,T:null,R:null,m:null});
+    }
   });
-  // table under map
   const t=document.getElementById('mapTbl');
   t.innerHTML=`<thead><tr><th>Country</th><th>T °C</th><th>R mm</th><th>Λ</th><th>σ</th>
     <th>Mean X</th><th>P(X>${XC})</th><th>Persist</th></tr></thead><tbody>`+
-    rows.map(({c,T,R,m})=>`<tr><td><span class="swatch" style="background:${ramp((m[key]-lo)/(hi-lo))}"></span>${c}</td>
+    rows.map(({c,T,R,m})=> m
+      ? `<tr><td><span class="swatch" style="background:${ramp((m[key]-lo)/(hi-lo))}"></span>${c}</td>
       <td>${T}</td><td>${R}</td><td>${fmt(m.Lambda,4)}</td><td>${fmt(m.sigma,3)}</td>
       <td>${fmt(m.statMean,0)}</td><td>${pct(m.exceed)}</td>
-      <td>${m.persist?'<span class="tag ok">yes</span>':'<span class="tag no">no</span>'}</td></tr>`).join('')+
+      <td>${m.persist?'<span class="tag ok">yes</span>':'<span class="tag no">no</span>'}</td></tr>`
+      : `<tr><td>${c}</td><td colspan="7" class="chip" style="text-align:left">climate pending</td></tr>`).join('')+
     `</tbody>`;
 }
 document.getElementById('mapMetric').addEventListener('change',drawMap);
 document.getElementById('mapMonth').addEventListener('change',drawMap);
+document.getElementById('regionFilter').addEventListener('change',e=>{ if(API) loadCountriesFromApi(e.target.value); });
 
 /* ================= 03 MONTHLY ================= */
 let monthCountry="Kenya", climateEditable=false;
 let seasonChart=null, climateChart=null;
 function buildCountrySeg(id,onPick){
   const el=document.getElementById(id);
-  el.innerHTML=COUNTRIES.map(c=>`<button data-c="${c}" class="${c===monthCountry?'on':''}">${c}</button>`).join('');
-  el.querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>{
-    el.querySelectorAll('button').forEach(x=>x.classList.remove('on'));
-    b.classList.add('on'); onPick(b.dataset.c);
-  }));
+  if(!COUNTRIES.includes(monthCountry)) monthCountry=COUNTRIES[0];
+  if(COUNTRIES.length<=4){
+    el.innerHTML=COUNTRIES.map(c=>`<button data-c="${c}" class="${c===monthCountry?'on':''}">${c}</button>`).join('');
+    el.querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>{
+      el.querySelectorAll('button').forEach(x=>x.classList.remove('on'));
+      b.classList.add('on'); onPick(b.dataset.c);
+    }));
+  } else {
+    el.innerHTML=`<select style="width:auto;min-width:200px">`+
+      COUNTRIES.map(c=>`<option ${c===monthCountry?'selected':''}>${c}</option>`).join('')+`</select>`;
+    el.querySelector('select').addEventListener('change',e=>onPick(e.target.value));
+  }
+}
+function repopulateCountrySelects(){
+  ['mcCountry','simCountry','valCountry','spCountry'].forEach(id=>{
+    const el=document.getElementById(id); if(!el)return;
+    const cur=el.value;
+    el.innerHTML=COUNTRIES.map(c=>`<option>${c}</option>`).join('');
+    if(COUNTRIES.includes(cur)) el.value=cur;
+  });
+  buildCountrySeg('monthCountry',c=>{monthCountry=c;renderMonthly();});
 }
 buildCountrySeg('monthCountry',c=>{monthCountry=c;renderMonthly();});
 
 function monthlyRows(country){
-  return MONTHS.map((mn,i)=>{ const T=CLIM[country].T[i], R=CLIM[country].R[i];
-    const m=central(T,R,XC); return {Month:mn,T,R,...m}; });
+  const e=CLIM[country]||{};
+  return MONTHS.map((mn,i)=>{
+    const hasT=Array.isArray(e.T)&&isFinite(e.T[i]), hasR=Array.isArray(e.R)&&isFinite(e.R[i]);
+    if(!hasT||!hasR) return {Month:mn,T:e.T&&e.T[i]!=null?e.T[i]:NaN,R:e.R&&e.R[i]!=null?e.R[i]:NaN,
+      r:NaN,delta:NaN,K:NaN,sigma:NaN,Lambda:NaN,statMean:NaN,statVar:NaN,exceed:NaN,persist:0};
+    const T=e.T[i], R=e.R[i]; const m=central(T,R,XC); return {Month:mn,T,R,...m};
+  });
 }
 function renderMonthly(){
   const rows=monthlyRows(monthCountry);
@@ -887,7 +937,12 @@ document.getElementById('simCountry').innerHTML=COUNTRIES.map(c=>`<option>${c}</
 let mcHist=null, lastDraws=null;
 function renderMcCentral(){
   const c=document.getElementById('mcCountry').value, mi=+document.getElementById('mcMonth').value;
-  const T=CLIM[c].T[mi], R=CLIM[c].R[mi], m=central(T,R,XC);
+  const e=CLIM[c]||{};
+  if(!(Array.isArray(e.T)&&isFinite(e.T[mi])&&Array.isArray(e.R)&&isFinite(e.R[mi]))){
+    document.getElementById('mcCentral').innerHTML='<div class="ro"><div class="k">climate</div><div class="v" style="font-size:14px">not loaded</div></div>';
+    return;
+  }
+  const T=e.T[mi], R=e.R[mi], m=central(T,R,XC);
   const items=[['Λ',fmt(m.Lambda,4),''],['P(X>x_c)',pct(m.exceed),''],['Mean X',fmt(m.statMean,0),'idx'],
     ['r',fmt(m.r,4),'d⁻¹'],['δ',fmt(m.delta,4),'d⁻¹'],['σ',fmt(m.sigma,3),''],['K',fmt(m.K,0),'idx'],
     ['Persist',m.persist?'yes':'no','']];
@@ -917,7 +972,10 @@ document.getElementById('resetParams').addEventListener('click',()=>{
 
 document.getElementById('runMc').addEventListener('click',()=>{
   const c=document.getElementById('mcCountry').value, mi=+document.getElementById('mcMonth').value;
-  const N=+document.getElementById('mcN').value, T=CLIM[c].T[mi], R=CLIM[c].R[mi];
+  const e=CLIM[c]||{};
+  if(!(Array.isArray(e.T)&&isFinite(e.T[mi])&&Array.isArray(e.R)&&isFinite(e.R[mi]))){
+    document.getElementById('mcStatus').textContent='climate not loaded for '+c+' — run vectorrisk fetch on the server'; return; }
+  const N=+document.getElementById('mcN').value, T=e.T[mi], R=e.R[mi];
   const st=document.getElementById('mcStatus'); st.innerHTML=`<span class="spin"></span>sampling ${N.toLocaleString()} draws…`;
   setTimeout(()=>{
     const res=monteCarlo(T,R,XC,N); lastDraws={res,c,mi,T,R,N};
@@ -1029,9 +1087,13 @@ let simChart=null, lastSim=null;
 document.getElementById('runSim').addEventListener('click',()=>{
   const c=document.getElementById('simCountry').value, years=+document.getElementById('simYears').value;
   const interp=document.getElementById('simInterp').value;
-  const st=document.getElementById('simStatus'); st.innerHTML='<span class="spin"></span>integrating…';
+  const st=document.getElementById('simStatus');
+  const e=CLIM[c]||{};
+  if(!(Array.isArray(e.T)&&e.T.length===12&&e.T.every(isFinite)&&Array.isArray(e.R)&&e.R.length===12&&e.R.every(isFinite))){
+    st.textContent='climate not loaded for '+c+' — run vectorrisk fetch on the server'; return; }
+  st.innerHTML='<span class="spin"></span>integrating…';
   setTimeout(()=>{
-    const T0=CLIM[c].T, R0=CLIM[c].R;
+    const T0=e.T, R0=e.R;
     // daily climate over one year
     const dailyT=[],dailyR=[]; let day=0; const cum=[0]; DAYS.forEach(d=>cum.push(cum[cum.length-1]+d));
     for(let d=0;d<365;d++){
@@ -1100,6 +1162,41 @@ function chartOpts(scales,subtitle){
 /* ================= LIVE BACKEND ================= */
 const apiStatus=document.getElementById('apiStatus');
 async function jget(path){ const r=await fetch(API+path); if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); }
+function regionQuery(region){
+  if(region==='Sub-Saharan') return 'subsaharan_only=true';
+  if(region==='All') return '';
+  return 'region='+encodeURIComponent(region);
+}
+async function loadCountriesFromApi(region){
+  REGION_FILTER=region;
+  apiStatus.innerHTML='<span class="spin"></span>loading '+region+' countries…';
+  const q=regionQuery(region);
+  const meta=await fetch(`${API}/countries${q?'?'+q:''}`).then(r=>r.json());
+  COUNTRY_META=meta;
+  COUNTRIES=Object.keys(meta);
+  // seed CLIM with location + placeholders
+  const newClim={};
+  for(const c of COUNTRIES){
+    const keep=CLIM[c]||{};
+    newClim[c]={lat:meta[c].lat,lng:meta[c].lng,place:meta[c].place||meta[c].region+' Africa',
+                region:meta[c].region,iso3:meta[c].iso3,
+                T:keep.T||CLIM0[c]?.T||[],R:keep.R||CLIM0[c]?.R||[]};
+  }
+  CLIM=newClim;
+  if(!COUNTRIES.includes(monthCountry)) monthCountry=COUNTRIES[0];
+  repopulateCountrySelects();
+  // bulk climate load
+  apiStatus.innerHTML='<span class="spin"></span>fetching '+API_RES+' climate for '+COUNTRIES.length+' countries…';
+  let live=0;
+  try{
+    const all=await fetch(`${API}/climate/all?${q?q+'&':''}resolution=${API_RES}`).then(r=>r.json());
+    const cl=all.climate||{};
+    for(const c of COUNTRIES){ const e=cl[c];
+      if(e&&e.T&&e.R){ CLIM[c].T=e.T.slice(); CLIM[c].R=e.R.slice(); if(e.source!=='fallback'&&e.source!=='pending') live++; } }
+  }catch(e){}
+  apiStatus.textContent=`connected · ${COUNTRIES.length} countries (${region}) · ${live} on live ${API_RES} climate`+(live<COUNTRIES.length?' · others pending fetch':'');
+  refreshAll();
+}
 async function connectApi(){
   const base=document.getElementById('apiUrl').value.trim().replace(/\/+$/,'');
   if(!base){ apiStatus.textContent='enter a URL first'; return; }
@@ -1107,22 +1204,18 @@ async function connectApi(){
   apiStatus.innerHTML='<span class="spin"></span>connecting…';
   try{
     const h=await jget('/health');
-    apiStatus.innerHTML='<span class="spin"></span>fetching '+API_RES+' climate…';
-    let live=0;
-    for(const c of COUNTRIES){
-      try{ const cl=await fetch(`${API}/climate?country=${c}&resolution=${API_RES}`).then(r=>r.json());
-        if(cl.T&&cl.R){ CLIM[c].T=cl.T.slice(); CLIM[c].R=cl.R.slice(); if(cl.source!=='fallback') live++; }
-      }catch(e){}
-    }
-    apiStatus.textContent=`connected · v${h.version||'?'} · ${live}/${COUNTRIES.length} countries on live ${API_RES} climate`+(live<COUNTRIES.length?' (rest fell back)':'');
     document.getElementById('apiDisconnect').disabled=false;
     document.getElementById('loadChoro').disabled=false;
-    refreshAll();
+    const rf=document.getElementById('regionFilter'); if(rf) rf.disabled=false;
+    await loadCountriesFromApi(REGION_FILTER);
   }catch(e){ API=null; apiStatus.textContent='could not reach backend ('+e.message+') — still using built-in model'; }
 }
-function disconnectApi(){ API=null; CLIM=clone(CLIM0);
+function disconnectApi(){ API=null; CLIM=clone(CLIM0); COUNTRIES=Object.keys(CLIM0); COUNTRY_META={};
   document.getElementById('apiDisconnect').disabled=true;
-  document.getElementById('loadChoro').disabled=true; clearChoro();
+  document.getElementById('loadChoro').disabled=true;
+  const rf=document.getElementById('regionFilter'); if(rf) rf.disabled=true;
+  if(!COUNTRIES.includes(monthCountry)) monthCountry=COUNTRIES[0];
+  repopulateCountrySelects(); clearChoro();
   apiStatus.textContent='not connected · using built-in model'; refreshAll(); }
 const rampCssStops=STOPS; // reuse
 async function loadChoro(){
@@ -1131,20 +1224,22 @@ async function loadChoro(){
   const key=document.getElementById('mapMetric').value, mi=+document.getElementById('mapMonth').value;
   const btn=document.getElementById('loadChoro'); const old=btn.textContent; btn.textContent='loading…'; btn.disabled=true;
   try{
-    // choropleth for every focus country at the selected month/metric
+    // sub-national choropleth for ONE country (the Monthly-tab country), to stay light
+    const c=COUNTRIES.includes(monthCountry)?monthCountry:COUNTRIES[0];
     clearChoro(); choroLayer=L.layerGroup().addTo(markerLayer._map||mapObj);
     const probKeys={exceed:1,persist:1};
-    for(const c of COUNTRIES){
-      const url=`${API}/choropleth?country=${c}&month=${mi+1}&xc=${XC}&resolution=${API_RES}`;
+    {
+      const url=`${API}/choropleth?country=${encodeURIComponent(c)}&month=${mi+1}&xc=${XC}&resolution=${API_RES}`;
       const fc=await fetch(url).then(r=>{ if(!r.ok) throw new Error('choropleth '+r.status); return r.json();});
       const vals=fc.features.map(f=>f.properties[key]).filter(v=>v!=null&&isFinite(v));
       let lo=Math.min(...vals), hi=Math.max(...vals); if(probKeys[key]){lo=0;hi=1;} if(lo===hi)hi=lo+1e-6;
-      L.geoJSON(fc,{style:f=>{ const v=f.properties[key];
+      const gj=L.geoJSON(fc,{style:f=>{ const v=f.properties[key];
         return {weight:.6,color:'#0a1219',fillOpacity:v==null?0.05:0.8,fillColor:v==null?'#26404f':ramp((v-lo)/(hi-lo))};},
         onEachFeature:(f,ly)=>{const p=f.properties; ly.bindPopup(
           `<b>${p.unit}</b> · ${c}<br>${p.month} · lvl ${p.level}<br>T ${fmt(p.T_C,1)}°C · R ${fmt(p.R_mm,0)}mm<br>`+
           `Λ ${fmt(p.Lambda,4)}<br>P(X>${XC}) ${pct(p.exceed)}<br>mean ${fmt(p.stationary_mean,0)}`);}
       }).addTo(choroLayer);
+      try{ mapObj.fitBounds(gj.getBounds(),{maxZoom:7}); }catch(e){}
     }
     document.getElementById('clearChoro').disabled=false;
   }catch(e){ alert('Sub-national layer needs the geo stack + cached WorldClim/GADM on the backend.\n\n'+e.message); }
@@ -1159,6 +1254,7 @@ document.getElementById('clearChoro').addEventListener('click',clearChoro);
 
 /* ================= VALIDATION SCREEN ================= */
 const COUNTRY_ISO={Kenya:'KEN',Cameroon:'CMR',Mozambique:'MOZ'};
+const isoOf=c=>(COUNTRY_META[c]&&COUNTRY_META[c].iso3)||COUNTRY_ISO[c]||c;
 async function jpost(path,body){ const r=await fetch(API+path,{method:'POST',
   headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   if(!r.ok){ let d=''; try{d=(await r.json()).detail||'';}catch(e){} throw new Error(r.status+' '+d);} return r.json(); }
@@ -1234,7 +1330,9 @@ document.getElementById('runVal').addEventListener('click',async()=>{
     else if(mode==='upload'){
       const f=document.getElementById('valFile').files[0]; if(!f){st.textContent='choose a CSV first';return;}
       const inc=parseCsvIncidence(await f.text());
-      const units={}; for(const c of COUNTRIES){ const iso=COUNTRY_ISO[c]||c; units[iso]={T:CLIM[c].T.slice(),R:CLIM[c].R.slice(),iso3:iso}; }
+      const units={}; for(const c of COUNTRIES){ const iso=isoOf(c); const e=CLIM[c]||{};
+        if(Array.isArray(e.T)&&Array.isArray(e.R)&&e.T.length===12&&e.R.length===12)
+          units[iso]={T:e.T.slice(),R:e.R.slice(),iso3:iso}; }
       res=await jpost('/validate/correlation',{units,incidence:inc,keys:['iso3']});
     } else {
       const country=document.getElementById('valCountry').value, month=+document.getElementById('valMonth').value+1;
