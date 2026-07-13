@@ -15,14 +15,16 @@ def cmd_serve(a):
 
 def cmd_fetch(a):
     from .data import ensure_worldclim, ensure_admin, ensure_natural_earth
-    ensure_worldclim(a.resolution, a.cache)
+    temps = ["tavg", "tmin", "tmax"] if a.temp == "all" else [C.temp_var_of(a.temp)]
+    for tv in temps:
+        ensure_worldclim(a.resolution, a.cache, tv)
     if a.natural_earth:
         ensure_natural_earth(a.cache)
     for name in (a.countries or list(C.COUNTRIES)):
         c = C.COUNTRIES[name]
         for lvl in sorted({0, c.admin_level, a.level} - {None}):
             ensure_admin(c.iso3, lvl, a.cache)
-    print("Fetched WorldClim", a.resolution, "and GADM boundaries into", a.cache)
+    print("Fetched WorldClim", a.resolution, temps, "and boundaries into", a.cache)
 
 
 def cmd_maps(a):
@@ -86,7 +88,7 @@ def cmd_panel(a):
                      indent=2))
     if a.out:
         import csv
-        with open(a.out, "w", newline="") as f:
+        with open(a.out, "w", newline="", encoding="utf-8") as f:
             if panel:
                 w = csv.DictWriter(f, fieldnames=list(panel[0].keys())); w.writeheader(); w.writerows(panel)
         print("wrote panel to", a.out)
@@ -109,7 +111,7 @@ def cmd_subpanel(a):
                             indent=2))
     if a.out:
         import csv
-        with open(a.out, "w", newline="") as f:
+        with open(a.out, "w", newline="", encoding="utf-8") as f:
             if panel:
                 w = csv.DictWriter(f, fieldnames=list(panel[0].keys())); w.writeheader(); w.writerows(panel)
         print("wrote panel to", a.out)
@@ -131,6 +133,8 @@ def main(argv=None):
 
     f = sub.add_parser("fetch", help="download & cache climate + boundary data")
     f.add_argument("--resolution", default=C.DEFAULT_RESOLUTION, choices=list(C.RESOLUTIONS))
+    f.add_argument("--temp", default="mean", choices=["mean", "min", "max", "all"],
+                   help="which WorldClim temperature to download")
     f.add_argument("--countries", nargs="*"); f.add_argument("--level", type=int, default=None)
     f.add_argument("--natural-earth", action="store_true")
     f.add_argument("--cache", default="vectorrisk_cache"); f.set_defaults(func=cmd_fetch)

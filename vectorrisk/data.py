@@ -48,11 +48,12 @@ def _unzip(zip_path: Path, out_dir: Path) -> Path:
 
 # ---- WorldClim ----------------------------------------------------------
 def ensure_worldclim(resolution: str = DEFAULT_RESOLUTION,
-                     cache_dir: str = "vectorrisk_cache") -> dict:
-    """Download+extract WorldClim tavg & prec for a resolution. Returns dirs."""
+                     cache_dir: str = "vectorrisk_cache",
+                     temp_var: str = "tavg") -> dict:
+    """Download+extract WorldClim temperature (tavg|tmin|tmax) & prec. Returns dirs."""
     base = Path(cache_dir) / "worldclim" / resolution
     out = {}
-    for var in ("tavg", "prec"):
+    for var in (temp_var, "prec"):
         zp = base / f"wc2.1_{resolution}_{var}.zip"
         _download(worldclim_url(var, resolution), zp)
         out[var] = _unzip(zp, base / var)

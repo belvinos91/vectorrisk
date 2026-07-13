@@ -119,13 +119,14 @@ def _fallback_climate(country: str):
 @app.get("/climate")
 def climate(country: str = Query(...),
             resolution: str = Query(C.DEFAULT_RESOLUTION),
-            live: bool = Query(True)):
+            live: bool = Query(True), temp: str = Query("mean")):
     if country not in C.COUNTRIES:
         raise HTTPException(404, f"Unknown country '{country}'")
     if live:
         try:
             from .zonal import country_monthly_climatology
-            return country_monthly_climatology(country, resolution, CACHE)
+            return country_monthly_climatology(country, resolution, CACHE,
+                                               C.temp_var_of(temp))
         except Exception as e:  # geo stack or data unavailable
             fb = _fallback_climate(country)
             fb["resolution"] = resolution
@@ -137,25 +138,25 @@ def climate(country: str = Query(...),
 @app.get("/climate/all")
 def climate_all(region: str = Query(None), subsaharan_only: bool = Query(False),
                 resolution: str = Query(C.DEFAULT_RESOLUTION),
-                live: bool = Query(True)):
+                live: bool = Query(True), temp: str = Query("mean")):
     """Climate for many countries at once (drives the multi-country dashboard)."""
     names = C.filter_countries(region, subsaharan_only)
     out = {}
     for name in names:
         try:
-            out[name] = climate(name, resolution, live)
+            out[name] = climate(name, resolution, live, temp)
         except Exception as e:
             out[name] = {"country": name, "T": None, "R": None,
                          "source": "error", "detail": str(e)}
-    return {"resolution": resolution, "count": len(out), "climate": out}
+    return {"resolution": resolution, "temp": temp, "count": len(out), "climate": out}
 
 
 @app.get("/metrics")
 def metrics(country: str = Query(...), month: int = Query(1, ge=1, le=12),
             xc: float = Query(C.DEFAULT_XC),
             resolution: str = Query(C.DEFAULT_RESOLUTION),
-            live: bool = Query(True)):
-    cl = climate(country, resolution, live)
+            live: bool = Query(True), temp: str = Query("mean")):
+    cl = climate(country, resolution, live, temp)
     if cl.get("T") is None or cl.get("R") is None:
         return {"country": country, "month": C.MONTH_NAMES[month - 1],
                 "T": None, "R": None, "xc": xc,
@@ -219,11 +220,11 @@ def admin(country: str = Query(...), level: Optional[int] = None):
 def choropleth(country: str = Query(...), month: int = Query(1, ge=1, le=12),
                xc: float = Query(C.DEFAULT_XC),
                resolution: str = Query(C.DEFAULT_RESOLUTION),
-               level: Optional[int] = None):
+               level: Optional[int] = None, temp: str = Query("mean")):
     try:
         from .zonal import admin_metric_featurecollection
         return admin_metric_featurecollection(country, month, xc, resolution,
-                                              level, CACHE)
+                                              level, CACHE, temp_var=C.temp_var_of(temp))
     except Exception as e:
         raise HTTPException(503,
             f"Choropleth needs the geo stack + WorldClim/GADM cache: {e}")

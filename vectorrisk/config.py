@@ -29,8 +29,16 @@ GADM_JSON_BASE = "https://geodata.ucdavis.edu/gadm/gadm4.1/json"
 
 
 def worldclim_url(var: str, resolution: str) -> str:
-    """var in {'tavg','prec'}; resolution key of RESOLUTIONS."""
+    """var in {'tavg','tmin','tmax','prec'}; resolution key of RESOLUTIONS."""
     return f"{WORLDCLIM_BASE}/wc2.1_{resolution}_{var}.zip"
+
+
+# UI temperature choice -> WorldClim variable
+TEMP_VARS = {"mean": "tavg", "min": "tmin", "max": "tmax"}
+
+
+def temp_var_of(choice: str) -> str:
+    return TEMP_VARS.get((choice or "mean").lower(), "tavg")
 
 
 def gadm_url(iso3: str, level: int) -> str:

@@ -74,34 +74,34 @@ def zonal_mean_TR(path_t: Path, path_r: Path, geom):
 
 
 def country_monthly_climatology(country: str, resolution: str,
-                                 cache_dir: str) -> Dict[str, list]:
-    """Zonal-mean monthly T,R for a whole country from real rasters."""
+                                 cache_dir: str, temp_var: str = "tavg") -> Dict[str, list]:
+    """Zonal-mean monthly T,R for a whole country. temp_var in tavg|tmin|tmax."""
     c = COUNTRIES[country]
     gj = ensure_admin(c.iso3, 0, cache_dir)          # admin-0 outline
     gpd = _gpd()
     geom = union_geometries(gpd.read_file(gj).to_crs("EPSG:4326"))
-    ensure_worldclim(resolution, cache_dir)
+    ensure_worldclim(resolution, cache_dir, temp_var)
     T, R = [], []
     for m in range(1, 13):
-        tp = worldclim_month_path("tavg", m, resolution, cache_dir)
+        tp = worldclim_month_path(temp_var, m, resolution, cache_dir)
         rp = worldclim_month_path("prec", m, resolution, cache_dir)
         t, r = zonal_mean_TR(tp, rp, geom)
         T.append(round(t, 2)); R.append(round(r, 1))
-    return {"country": country, "resolution": resolution, "T": T, "R": R}
+    return {"country": country, "resolution": resolution, "temp_var": temp_var, "T": T, "R": R}
 
 
 def admin_metric_featurecollection(country: str, month: int, xc: float,
                                    resolution: str, level: int | None,
                                    cache_dir: str,
-                                   params=None) -> dict:
+                                   params=None, temp_var: str = "tavg") -> dict:
     """Per-admin-unit choropleth: zonal-mean climate -> model -> GeoJSON."""
     c = COUNTRIES[country]
     lvl = c.admin_level if level is None else level
     gj = ensure_admin(c.iso3, lvl, cache_dir)
     gpd = _gpd()
     gdf = gpd.read_file(gj).to_crs("EPSG:4326")
-    ensure_worldclim(resolution, cache_dir)
-    tp = worldclim_month_path("tavg", month, resolution, cache_dir)
+    ensure_worldclim(resolution, cache_dir, temp_var)
+    tp = worldclim_month_path(temp_var, month, resolution, cache_dir)
     rp = worldclim_month_path("prec", month, resolution, cache_dir)
     p = central_params() if params is None else params
     name_col = admin_name_col(gdf.columns, lvl)

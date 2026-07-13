@@ -177,7 +177,7 @@ footer{border-top:1px solid var(--line);color:var(--faint);font-size:11.5px;text
     <div>
       <div class="eyebrow">Console overview</div>
       <h2>A probabilistic layer for entomological surveillance</h2>
-      <p>This console runs the temperature–rainfall stochastic logistic model from your manuscript directly in the browser. For any climate state it evaluates the persistence condition, the stationary Gamma abundance law, threshold-exceedance risk, and finite-horizon intervention scenarios — then maps them across focus countries.</p>
+      <p>This console runs a temperature–rainfall stochastic logistic model directly in the browser. For any climate state it evaluates the persistence condition, the stationary Gamma abundance law, threshold-exceedance risk, and finite-horizon intervention scenarios — then maps them across African countries.</p>
     </div>
   </div>
 
@@ -260,6 +260,14 @@ footer{border-top:1px solid var(--line);color:var(--faint);font-size:11.5px;text
         </select>
       </label>
       <label class="fld">
+        <span class="lb">Temperature</span>
+        <select id="tempVar" disabled>
+          <option value="mean">Mean (tavg)</option>
+          <option value="min">Min (tmin)</option>
+          <option value="max">Max (tmax)</option>
+        </select>
+      </label>
+      <label class="fld">
         <span class="lb">Metric</span>
         <select id="mapMetric">
           <option value="exceed">Exceedance P(X &gt; x_c)</option>
@@ -331,7 +339,7 @@ footer{border-top:1px solid var(--line);color:var(--faint);font-size:11.5px;text
     <div>
       <div class="eyebrow">Uncertainty propagation</div>
       <h2>Parameters &amp; Monte Carlo</h2>
-      <p>Central values drive the deterministic maps and tables. Ranges define the uncertainty space sampled for the ensemble, exactly as in Table&nbsp;2 of the manuscript.</p>
+      <p>Central values drive the deterministic maps and tables. Ranges define the uncertainty space sampled for the ensemble, from the literature-informed ranges built into the model.</p>
     </div>
   </div>
 
@@ -365,8 +373,8 @@ footer{border-top:1px solid var(--line);color:var(--faint);font-size:11.5px;text
 
   <details>
     <summary>Edit central parameters &amp; sampling ranges</summary>
-    <div class="note" style="margin:10px 0">Central value must lie inside [min, max]. The ensemble samples each parameter independently and uniformly across its range. "Reset" restores manuscript defaults.</div>
-    <div class="btnrow" style="margin-bottom:10px"><button class="btn ghost" id="resetParams">Reset to manuscript defaults</button></div>
+    <div class="note" style="margin:10px 0">Central value must lie inside [min, max]. The ensemble samples each parameter independently and uniformly across its range. "Reset" restores the default ranges.</div>
+    <div class="btnrow" style="margin-bottom:10px"><button class="btn ghost" id="resetParams">Reset to defaults</button></div>
     <div class="tblwrap"><table id="paramTbl"></table></div>
   </details>
 </section>
@@ -448,7 +456,7 @@ footer{border-top:1px solid var(--line);color:var(--faint);font-size:11.5px;text
     <div>
       <div class="eyebrow">Governing equations</div>
       <h2>The model, written out</h2>
-      <p>Every quantity the console computes, in the same form as the manuscript. This screen is a self-contained explanation of what the dashboard is doing and why.</p>
+      <p>Every quantity the console computes, in the same form used by the model. This screen is a self-contained explanation of what the dashboard is doing and why.</p>
     </div>
   </div>
 
@@ -504,7 +512,7 @@ footer{border-top:1px solid var(--line);color:var(--faint);font-size:11.5px;text
         <div class="why">Reweights baseline paths toward a high-abundance or intervention scenario. Screen 05 checks \(\mathbb E_Q[\Phi]=\mathbb E_P[Z_\tau\Phi]\) numerically.</div></div>
       <div class="eyebrow" style="margin-top:14px">Backend for the live/full system</div>
       <div class="why" style="font-family:var(--sans);color:var(--muted)">
-        The manuscript pipeline (WorldClim v2.1 ingestion, Natural Earth masking, full-raster \(N{=}10{,}000\) Monte Carlo, GeoTIFF export) is Python. To make the console "live" — real-time climate and sub-national polygons — wrap that script in a small API (e.g. FastAPI) exposing <span class="mono">/metrics</span>, <span class="mono">/montecarlo</span>, <span class="mono">/simulate</span>, and a GeoJSON tile endpoint, and point these screens at it. The math on this page already matches that pipeline cell-for-cell, so it doubles as the reference implementation.
+        The full pipeline (WorldClim v2.1 ingestion, Natural Earth masking, full-raster \(N{=}10{,}000\) Monte Carlo, GeoTIFF export) is Python. To make the console "live" — real-time climate and sub-national polygons — wrap that script in a small API (e.g. FastAPI) exposing <span class="mono">/metrics</span>, <span class="mono">/montecarlo</span>, <span class="mono">/simulate</span>, and a GeoJSON tile endpoint, and point these screens at it. The math on this page already matches that pipeline cell-for-cell, so it doubles as the reference implementation.
       </div>
     </div>
   </div>
@@ -635,7 +643,7 @@ const gammaQ=(a,x)=>1-gammaP(a,x);    // upper survival
 function gaussianN(){ let u=0,v=0; while(u===0)u=Math.random(); while(v===0)v=Math.random();
   return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
 
-/* ---------- parameter defaults (manuscript) ---------- */
+/* ---------- parameter defaults ---------- */
 const RANGES0={
   beta_E:[60,160], rho:[0.035,0.090],
   pE_max:[0.65,0.95], pL_max:[0.55,0.90], pP_max:[0.70,0.98],
@@ -679,6 +687,7 @@ let CLIM=clone(CLIM0);
 let COUNTRIES=Object.keys(CLIM0);          // dynamic: replaced by API list when connected
 let COUNTRY_META={};                        // name -> {iso3,region,subsaharan,lat,lng,place}
 let REGION_FILTER='Sub-Saharan';            // default view
+let TEMP_VAR='mean';                        // mean | min | max (WorldClim tavg/tmin/tmax)
 const XC_SET=[250,500,700,1000,1250,1500];
 let XC=500;
 let API=null, API_RES="30s", choroLayer=null;   // live backend state
@@ -830,6 +839,7 @@ function drawMap(){
 document.getElementById('mapMetric').addEventListener('change',drawMap);
 document.getElementById('mapMonth').addEventListener('change',drawMap);
 document.getElementById('regionFilter').addEventListener('change',e=>{ if(API) loadCountriesFromApi(e.target.value); });
+document.getElementById('tempVar').addEventListener('change',e=>{ TEMP_VAR=e.target.value; if(API) loadCountriesFromApi(REGION_FILTER); });
 
 /* ================= 03 MONTHLY ================= */
 let monthCountry="Kenya", climateEditable=false;
@@ -1189,7 +1199,7 @@ async function loadCountriesFromApi(region){
   apiStatus.innerHTML='<span class="spin"></span>fetching '+API_RES+' climate for '+COUNTRIES.length+' countries…';
   let live=0;
   try{
-    const all=await fetch(`${API}/climate/all?${q?q+'&':''}resolution=${API_RES}`).then(r=>r.json());
+    const all=await fetch(`${API}/climate/all?${q?q+'&':''}resolution=${API_RES}&temp=${TEMP_VAR}`).then(r=>r.json());
     const cl=all.climate||{};
     for(const c of COUNTRIES){ const e=cl[c];
       if(e&&e.T&&e.R){ CLIM[c].T=e.T.slice(); CLIM[c].R=e.R.slice(); if(e.source!=='fallback'&&e.source!=='pending') live++; } }
@@ -1207,6 +1217,7 @@ async function connectApi(){
     document.getElementById('apiDisconnect').disabled=false;
     document.getElementById('loadChoro').disabled=false;
     const rf=document.getElementById('regionFilter'); if(rf) rf.disabled=false;
+    const tv=document.getElementById('tempVar'); if(tv) tv.disabled=false;
     await loadCountriesFromApi(REGION_FILTER);
   }catch(e){ API=null; apiStatus.textContent='could not reach backend ('+e.message+') — still using built-in model'; }
 }
@@ -1214,6 +1225,7 @@ function disconnectApi(){ API=null; CLIM=clone(CLIM0); COUNTRIES=Object.keys(CLI
   document.getElementById('apiDisconnect').disabled=true;
   document.getElementById('loadChoro').disabled=true;
   const rf=document.getElementById('regionFilter'); if(rf) rf.disabled=true;
+  const tv=document.getElementById('tempVar'); if(tv) tv.disabled=true;
   if(!COUNTRIES.includes(monthCountry)) monthCountry=COUNTRIES[0];
   repopulateCountrySelects(); clearChoro();
   apiStatus.textContent='not connected · using built-in model'; refreshAll(); }
@@ -1229,7 +1241,7 @@ async function loadChoro(){
     clearChoro(); choroLayer=L.layerGroup().addTo(markerLayer._map||mapObj);
     const probKeys={exceed:1,persist:1};
     {
-      const url=`${API}/choropleth?country=${encodeURIComponent(c)}&month=${mi+1}&xc=${XC}&resolution=${API_RES}`;
+      const url=`${API}/choropleth?country=${encodeURIComponent(c)}&month=${mi+1}&xc=${XC}&resolution=${API_RES}&temp=${TEMP_VAR}`;
       const fc=await fetch(url).then(r=>{ if(!r.ok) throw new Error('choropleth '+r.status); return r.json();});
       const vals=fc.features.map(f=>f.properties[key]).filter(v=>v!=null&&isFinite(v));
       let lo=Math.min(...vals), hi=Math.max(...vals); if(probKeys[key]){lo=0;hi=1;} if(lo===hi)hi=lo+1e-6;
