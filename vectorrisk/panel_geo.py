@@ -114,3 +114,66 @@ def subnational_panel(country: str, years: Sequence[int], raster_template: str,
         if progress:
             progress((i + 1) / len(years))
     return panel, incidence
+
+
+import re as _re
+
+
+def _norm(name: str) -> str:
+    """Canonicalize an admin-unit name for cross-source joining."""
+    s = str(name).lower()
+    s = s.replace("&", "and")
+    s = _re.sub(r"[^a-z0-9]", "", s)
+    # drop common admin suffixes that differ between sources
+    for suf in ("county", "district", "region", "province", "governorate", "city",
+                "municipality", "metropolitan"):
+        if s.endswith(suf):
+            s = s[: -len(suf)]
+    return s
+
+
+def subnational_panel_from_csv(country: str, year: int,
+                               incidence_rows, level=None,
+                               cache_dir: str = "vectorrisk_cache",
+                               rainfall_source: str = "terraclimate",
+                               params=None, temp_group=None):
+    """Build a (unit) panel for one year from year-specific climate, and join
+    it to per-unit incidence supplied as rows [{'unit':.., 'value':..}] (e.g.
+    from a Malaria Atlas Project admin-1/2 CSV export).
+
+    Returns (panel_rows, incidence_rows_normalized, match_report).
+    Panel and incidence both carry 'unit_key' (normalized) for the join.
+    """
+    from .validation import annual_summary
+    gdf, name_col, lvl, iso3 = _load_admin(country, level, cache_dir)
+    bbox = tuple(gdf.total_bounds)
+    clim = _year_climate_by_unit(gdf, name_col, year, bbox, rainfall_source, cache_dir)
+
+    panel = []
+    for unit, cl in clim.items():
+        s = annual_summary(cl["T"], cl["R"], params=params)
+        panel.append({"unit": unit, "unit_key": _norm(unit), "iso3": iso3,
+                      "year": int(year), **s})
+
+    inc = []
+    for r in incidence_rows:
+        v = r.get("value")
+        if v is None:
+            continue
+        try:
+            v = float(v)
+        except (TypeError, ValueError):
+            continue
+        inc.append({"unit": r.get("unit"), "unit_key": _norm(r.get("unit")),
+                    "year": int(year), "value": v})
+
+    pk = {p["unit_key"] for p in panel}
+    ik = {r["unit_key"] for r in inc}
+    matched = pk & ik
+    report = {"admin_units": len(panel), "incidence_units": len(inc),
+              "matched": len(matched),
+              "unmatched_incidence": sorted({r["unit"] for r in inc
+                                             if r["unit_key"] not in pk})[:40],
+              "unmatched_admin": sorted({p["unit"] for p in panel
+                                         if p["unit_key"] not in ik})[:40]}
+    return panel, inc, report

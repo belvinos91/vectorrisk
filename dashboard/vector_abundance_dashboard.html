@@ -550,6 +550,7 @@ footer{border-top:1px solid var(--line);color:var(--faint);font-size:11.5px;text
             <option value="builtin">WHO national (demo · 3 countries)</option>
             <option value="panel">Country-year panel (live · TerraClimate)</option>
             <option value="subpanel">Sub-national × year panel (live · MAP)</option>
+            <option value="subcsv">Sub-national (upload MAP admin CSV)</option>
             <option value="upload">Upload incidence CSV (national)</option>
             <option value="subnational">Sub-national (live · MAP raster)</option>
           </select>
@@ -572,6 +573,17 @@ footer{border-top:1px solid var(--line);color:var(--faint);font-size:11.5px;text
           <label class="fld"><span class="lb">MAP raster path template (on server)</span>
             <input type="text" id="spTemplate" placeholder="/data/map/pf_incidence_{year}.tif"></label>
           <div class="note" style="font-size:11.5px">Per-admin-unit model metrics vs per-unit MAP incidence, across every admin unit and year — thousands of points. The heaviest run: one climate download per year and one MAP raster per year, each clipped to every unit. Use <b>{year}</b> in the template.</div>
+        </div>
+
+        <div id="valSubCsv" style="display:none">
+          <label class="fld"><span class="lb">Country</span><select id="csvCountry"></select></label>
+          <div class="grid g2">
+            <label class="fld"><span class="lb">Year</span><input type="number" id="csvYear" value="2015" min="2000" max="2024"></label>
+            <label class="fld"><span class="lb">Admin level</span><select id="csvLevel"><option value="1">Admin 1</option><option value="2">Admin 2</option></select></label>
+          </div>
+          <label class="fld"><span class="lb">MAP admin CSV (Name, Metric, Year, Value)</span>
+            <input type="file" id="csvFile" accept=".csv"></label>
+          <div class="note" style="font-size:11.5px">On <b>data.malariaatlas.org</b>, export incidence at <b>Admin 1</b> (or Admin 2) for your country, then upload that CSV here. Units are joined to boundaries by name; a match report is shown. This needs no rasters.</div>
         </div>
 
         <div id="valUpload" style="display:none">
@@ -1333,6 +1345,7 @@ async function jpost(path,body){ const r=await fetch(API+path,{method:'POST',
 fillMonths(document.getElementById('valMonth'));
 document.getElementById('valCountry').innerHTML=COUNTRIES.map(c=>`<option>${c}</option>`).join('');
 document.getElementById('spCountry').innerHTML=COUNTRIES.map(c=>`<option>${c}</option>`).join('');
+document.getElementById('csvCountry').innerHTML=COUNTRIES.map(c=>`<option>${c}</option>`).join('');
 let valScatterChart=null, valLast=null;
 function updateValGate(){ const on=!!API;
   document.getElementById('valNeedsApi').style.display=on?'none':'block';
@@ -1342,11 +1355,31 @@ document.getElementById('valMode').addEventListener('change',e=>{ const m=e.targ
   document.getElementById('valUpload').style.display=m==='upload'?'block':'none';
   document.getElementById('valSub').style.display=m==='subnational'?'block':'none';
   document.getElementById('valYears').style.display=m==='panel'?'block':'none';
-  document.getElementById('valSubPanel').style.display=m==='subpanel'?'block':'none'; });
+  document.getElementById('valSubPanel').style.display=m==='subpanel'?'block':'none';
+  document.getElementById('valSubCsv').style.display=m==='subcsv'?'block':'none'; });
 const featLabel=f=>({Lambda_mean:'Λ (annual mean)',persist_frac:'Persistence fraction',
   abundance_mean:'Mean abundance',abundance_peak:'Peak abundance',Lambda:'Λ',exceed:'Exceedance',
   stationary_mean:'Stationary mean',sigma:'Volatility σ',persist:'Persistence'}[f]
   ||(f.startsWith('exceed_')?('Exceedance x_c='+f.split('_')[1]):f));
+function parseCsvRows(text){ const rows=[]; let i=0,field='',row=[],inq=false;
+  text=text.replace(/\r\n/g,'\n').replace(/\r/g,'\n');
+  while(i<text.length){ const ch=text[i];
+    if(inq){ if(ch==='"'){ if(text[i+1]==='"'){field+='"';i++;} else inq=false; } else field+=ch; }
+    else { if(ch==='"') inq=true; else if(ch===','){row.push(field);field='';}
+      else if(ch==='\n'){row.push(field);rows.push(row);row=[];field='';} else field+=ch; }
+    i++; }
+  if(field.length||row.length){row.push(field);rows.push(row);} return rows; }
+function parseMapIncidence(text, year, metricWanted){
+  const rows=parseCsvRows(text); if(!rows.length) return [];
+  const hdr=rows[0].map(h=>h.trim().toLowerCase());
+  const iName=hdr.indexOf('name'), iMetric=hdr.indexOf('metric'), iYear=hdr.indexOf('year'), iVal=hdr.indexOf('value');
+  const out=[];
+  for(let r=1;r<rows.length;r++){ const c=rows[r]; if(!c||c.length<=Math.max(iName,iVal))continue;
+    if(parseInt(c[iYear])!==year) continue;
+    if(metricWanted && (c[iMetric]||'').toLowerCase().indexOf(metricWanted)<0) continue;
+    const v=parseFloat(c[iVal]); if(!isFinite(v))continue;
+    out.push({unit:(c[iName]||'').trim(), value:v}); }
+  return out; }
 function parseCsvIncidence(text){ const lines=text.trim().split(/\r?\n/);
   const hdr=lines[0].split(',').map(s=>s.trim().toLowerCase());
   const ik=hdr.indexOf('iso3'), vk=hdr.indexOf('value'); const rows=[];
@@ -1372,6 +1405,9 @@ function renderVal(res){
       <td>${r.pearson_p<0.001?r.pearson_p.toExponential(1):r.pearson_p.toFixed(3)}</td>
       <td>${r.spearman_r.toFixed(3)}</td><td>${r.n}</td></tr>`).join('')+`</tbody>`;
   document.getElementById('valNote').textContent=(res.note||'')+(res.note_demo?(' '+res.note_demo):'');
+  if(res.match_report){ const mr=res.match_report;
+    document.getElementById('valNote').textContent+=`  ·  matched ${mr.matched} of ${mr.incidence_units} CSV units to ${mr.admin_units} boundaries.`+
+      (mr.unmatched_incidence&&mr.unmatched_incidence.length?` Unmatched CSV names: ${mr.unmatched_incidence.slice(0,8).join(', ')}${mr.unmatched_incidence.length>8?'…':''}.`:''); }
   const pts=(res.scatter||[]).map(p=>({x:p.x,y:p.y}));
   if(valScatterChart)valScatterChart.destroy();
   valScatterChart=new Chart(document.getElementById('valScatter'),{type:'scatter',
@@ -1398,6 +1434,14 @@ document.getElementById('runVal').addEventListener('click',async()=>{
       if(!tmpl){st.textContent='enter the MAP raster path template (use {year})';return;}
       st.innerHTML='<span class="spin"></span>building '+country+' sub-national × '+(y1-y0+1)+'-year panel (heavy)…';
       res=await jpost('/validate/subnational-panel',{country,years:[y0,y1],raster_template:tmpl});
+    }
+    else if(mode==='subcsv'){
+      const f=document.getElementById('csvFile').files[0]; if(!f){st.textContent='choose the MAP CSV first';return;}
+      const country=document.getElementById('csvCountry').value, year=+document.getElementById('csvYear').value, level=+document.getElementById('csvLevel').value;
+      const inc=parseMapIncidence(await f.text(), year, 'incidence');
+      if(!inc.length){ st.textContent='no "Incidence" rows for '+year+' found — check the year and that the CSV is an admin-1/2 export'; return; }
+      st.innerHTML='<span class="spin"></span>matching '+inc.length+' units and building '+country+' '+year+' climate (first run is slow)…';
+      res=await jpost('/validate/subnational-csv',{country,year,level,incidence:inc,vector:VECTOR});
     }
     else if(mode==='upload'){
       const f=document.getElementById('valFile').files[0]; if(!f){st.textContent='choose a CSV first';return;}

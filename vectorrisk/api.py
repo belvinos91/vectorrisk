@@ -540,3 +540,46 @@ def disease_detail(name: str):
     if name not in DISEASES:
         raise HTTPException(404, f"Unknown disease '{name}'")
     return {"name": name, **DISEASES[name]}
+
+
+# ======================================================================
+# Sub-national validation from an uploaded MAP admin CSV (no rasters needed)
+# ======================================================================
+class SubCsvBody(BaseModel):
+    country: str
+    year: int
+    incidence: list            # rows: {"unit": <admin name>, "value": <number>}
+    level: int | None = None
+    vector: str = "Anopheles"
+    rainfall_source: str = "terraclimate"
+
+
+@app.post("/validate/subnational-csv")
+def validate_subnational_csv(body: SubCsvBody):
+    """Validate per-admin-unit model metrics against per-unit incidence supplied
+    from a Malaria Atlas Project admin-level CSV export."""
+    try:
+        from .panel_geo import subnational_panel_from_csv
+        from .validation import correlate
+        from .diseases import params_for_vector
+        p = params_for_vector(body.vector, C.central_params())
+        panel, inc, report = subnational_panel_from_csv(
+            body.country, body.year, body.incidence, body.level,
+            CACHE, body.rainfall_source, p)
+        if report["matched"] < 3:
+            return {"n": report["matched"], "results": [],
+                    "warning": f"Only {report['matched']} admin units matched by name "
+                               f"between the climate boundaries and your CSV. Check the "
+                               f"admin level and country.", "match_report": report}
+        res = correlate(panel, inc, keys=("unit_key",),
+                        feature_prefixes=("Lambda", "persist", "abundance", "exceed"))
+        res["country"] = body.country
+        res["year"] = body.year
+        res["units_scored"] = report["matched"]
+        res["match_report"] = report
+        return res
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(503, f"Sub-national CSV validation unavailable "
+                                 f"(needs geo+ts stack + boundaries + TerraClimate): {e}")
